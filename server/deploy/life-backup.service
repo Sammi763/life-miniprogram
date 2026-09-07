@@ -1,0 +1,29 @@
+[Unit]
+Description=Daily MySQL backup for 生活记忆 life
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# 改成部署目录；EnvironmentFile 与主服务共用同一份 .env。
+WorkingDirectory=/opt/life-sync-server
+EnvironmentFile=/opt/life-sync-server/.env
+ExecStart=/opt/life-sync-server/scripts/backup-mysql.sh
+User=www-data
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+TimeoutStartSec=10min
+# 备份脚本只在该固定目录创建临时文件和保留文件。
+ReadWritePaths=/opt/life-sync-server/db/backups

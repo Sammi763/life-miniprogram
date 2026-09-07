@@ -1,0 +1,41 @@
+[Unit]
+Description=Life Sync Server (生活记忆 life 同步后端)
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+# 改成你的部署路径与用户
+WorkingDirectory=/opt/life-sync-server
+ExecStart=/usr/bin/node /opt/life-sync-server/server.js
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=30
+TimeoutStopSec=20
+User=www-data
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/life-sync-server/.env
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+SystemCallArchitectures=native
+LimitNOFILE=4096
+TasksMax=64
+MemoryMax=512M
+# 服务只需为本地文件存储兜底写入 JSON；MySQL 走网络连接。
+ReadWritePaths=/opt/life-sync-server/data
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

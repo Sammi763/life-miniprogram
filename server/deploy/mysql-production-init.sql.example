@@ -1,0 +1,10 @@
+-- 仅用于首次创建数据库和低权限运行账号；请在安全终端中替换强密码后执行。
+-- 常驻 Node 服务使用 life_sync，不应拥有 CREATE / ALTER / DROP 权限。
+CREATE DATABASE IF NOT EXISTS `life_workbench` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'life_sync'@'127.0.0.1' IDENTIFIED BY 'REPLACE_WITH_A_LONG_RANDOM_PASSWORD';
+GRANT SELECT, INSERT, UPDATE, DELETE ON `life_workbench`.* TO 'life_sync'@'127.0.0.1';
+FLUSH PRIVILEGES;
+
+-- 然后使用单独的迁移账号或受控管理员执行：
+-- DB_AUTO_CREATE=0 DB_RUN_MIGRATIONS=1 npm run db:migrate
+-- 完成后恢复生产 .env 中 DB_RUN_MIGRATIONS=0，再启动 life-sync.service。

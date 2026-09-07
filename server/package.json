@@ -1,0 +1,26 @@
+{
+  "name": "life-sync-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "生活记忆 life · 自建同步后端（小程序 + 网页共用）",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev:docker": "node scripts/start-docker-local.js",
+    "db:migrate": "node db/migrate.js",
+    "db:init:production": "node db/migrate.js --create-database",
+    "db:migrate:docker": "node scripts/migrate-docker-local.js",
+    "secret:set": "node scripts/set-secret.js",
+    "secret:set:docker": "node scripts/set-secret.js --docker",
+    "security:scan": "node scripts/check-source-secrets.js",
+    "release:check": "node scripts/check-release-config.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "mysql2": "^3.14.3",
+    "ws": "^8.18.0"
+  }
+}

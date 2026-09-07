@@ -1,0 +1,10 @@
+[Unit]
+Description=Run 生活记忆 life MySQL backup every day
+
+[Timer]
+OnCalendar=*-*-* 03:20:00
+Persistent=true
+Unit=life-backup.service
+
+[Install]
+WantedBy=timers.target

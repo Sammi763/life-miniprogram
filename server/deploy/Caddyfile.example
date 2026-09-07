@@ -1,0 +1,31 @@
+# 复制到 /etc/caddy/Caddyfile 前，必须将 api.example.com 改成已备案且已解析的正式域名。
+# Caddy 会自动签发和续期 HTTPS 证书；/ws 的 WebSocket Upgrade 会自动透传。
+
+api.example.com {
+  encode zstd gzip
+  request_body {
+    max_size 128KB
+  }
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "DENY"
+    Referrer-Policy "no-referrer"
+    Permissions-Policy "camera=(), geolocation=(), microphone=()"
+    X-Robots-Tag "noindex, nofollow"
+  }
+
+  # 只把实际对外 API 和 WebSocket 反代给 Node 服务。
+  handle /api/* {
+    reverse_proxy 127.0.0.1:8787
+  }
+
+  handle /ws {
+    reverse_proxy 127.0.0.1:8787
+  }
+
+  handle {
+    respond "Not found" 404
+  }
+}
