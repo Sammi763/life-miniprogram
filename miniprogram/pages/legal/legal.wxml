@@ -1,0 +1,19 @@
+<view class="legal-page theme-page" style="{{themeStyle}}">
+  <view class="legal-hero">
+    <view class="legal-kicker">LIFE MEMORY · TERMS</view>
+    <view class="legal-title">{{document.title}}</view>
+    <view class="legal-intro">{{document.intro}}</view>
+  </view>
+
+  <view class="legal-tabs">
+    <view wx:for="{{documents}}" wx:key="key" class="legal-tab {{active === item.key ? 'active' : ''}}" data-doc="{{item.key}}" bindtap="selectDocument">{{item.tab}}</view>
+  </view>
+
+  <view class="legal-card" wx:for="{{document.sections}}" wx:key="heading">
+    <view class="legal-heading">{{item.heading}}</view>
+    <view wx:for="{{item.paragraphs}}" wx:for-item="paragraph" wx:key="*this" class="legal-paragraph">{{paragraph}}</view>
+  </view>
+
+  <button wx:if="{{active === 'privacy'}}" class="privacy-contract-btn" bindtap="openWechatPrivacy">查看微信用户隐私保护指引</button>
+  <view class="legal-footer">版本：发布前核对稿 · 请以实际运营信息完成替换</view>
+</view>

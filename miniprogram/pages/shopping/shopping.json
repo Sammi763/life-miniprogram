@@ -1,0 +1,6 @@
+{
+  "usingComponents": {},
+  "navigationBarTitleText": "待买清单",
+  "enablePullDownRefresh": true,
+  "backgroundTextStyle": "dark"
+}

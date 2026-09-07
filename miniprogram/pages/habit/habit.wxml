@@ -1,0 +1,54 @@
+<view class="theme-page" style="{{themeStyle}}">
+<view wx:if="{{offline}}" class="banner">
+  <text>云端暂不可用，改动已暂存本机</text>
+  <text bindtap="onPullDownRefresh" style="font-weight:600">重试</text>
+</view>
+
+<view wx:for="{{habits}}" wx:key="id" class="card habit-card">
+  <view class="habit-row" bindtap="tapHabit" data-id="{{item.id}}" data-mode="{{item.mode}}">
+    <view class="habit-info">
+      <view class="habit-name">{{item.name}} <text class="habit-streak" wx:if="{{item.streak}}">连续 {{item.streak}}</text></view>
+      <view class="sub">{{item.text}}</view>
+    </view>
+    <view class="habit-btn {{item.done ? 'habit-btn-on' : ''}}">
+      {{item.mode === 'count' ? '+1' : (item.done ? '✓' : '打卡')}}
+    </view>
+  </view>
+  <view class="habit-bar" wx:if="{{item.mode !== 'check'}}">
+    <view class="habit-bar-fill" style="width: {{item.value >= item.target ? 100 : (item.target ? item.value * 100 / item.target : 0)}}%"></view>
+  </view>
+  <view class="habit-edit" catchtap="editHabit" data-id="{{item.id}}">管理</view>
+</view>
+
+<view wx:if="{{habits.length === 0}}" class="card"><view class="empty">还没有习惯，点右下角添加一个吧</view></view>
+
+<view class="fab" bindtap="openAdd">＋</view>
+
+<view wx:if="{{sheetShow}}" class="mask" bindtap="closeSheet"></view>
+<view wx:if="{{sheetShow}}" class="sheet" catchtap="noop">
+  <view class="sheet-title">{{form.id ? '编辑习惯' : '新增习惯'}}</view>
+  <view class="field">
+    <view class="field-label">名字</view>
+    <input value="{{form.name}}" bindinput="setName" placeholder="如：喝水 / 阅读 / 步行" maxlength="12" />
+  </view>
+  <view class="field">
+    <view class="field-label">打卡方式</view>
+    <view class="chips">
+      <view wx:for="{{modes}}" wx:key="k"
+        class="chip {{form.mode === item.k ? 'on' : ''}}" bindtap="setMode" data-k="{{item.k}}">{{item.label}}</view>
+    </view>
+  </view>
+  <view class="field" wx:if="{{form.mode !== 'check'}}">
+    <view class="field-label">每日目标</view>
+    <input type="number" value="{{form.target}}" bindinput="setTarget" placeholder="如 8" />
+  </view>
+  <view class="field" wx:if="{{form.mode === 'count' || form.mode === 'value'}}">
+    <view class="field-label">单位</view>
+    <input value="{{form.unit}}" bindinput="setUnit" placeholder="如 杯 / 步 / 分钟" maxlength="6" />
+  </view>
+  <view class="switch-row"><view><view>置顶到今日待处理</view><view class="sub">优先出现在今日首页</view></view><switch checked="{{form.pinned}}" color="{{themeAccent}}" bindchange="onPinned" /></view>
+  <button class="btn btn-primary" bindtap="save">保存</button>
+</view>
+
+<view class="tabbar-spacer"></view>
+</view>

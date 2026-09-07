@@ -1,0 +1,41 @@
+{
+  "pages": [
+    "pages/login/login",
+    "pages/legal/legal",
+    "pages/today/today",
+    "pages/money/money",
+    "pages/habit/habit",
+    "pages/mine/mine",
+    "pages/plan/plan",
+    "pages/shopping/shopping",
+    "pages/media/media",
+    "pages/fitness/fitness",
+    "pages/report/report",
+    "pages/memory/memory",
+    "pages/review/review",
+    "pages/search/search"
+  ],
+  "window": {
+    "navigationBarBackgroundColor": "#F3F5F2",
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "生活记忆 life",
+    "backgroundColor": "#F3F5F2",
+    "backgroundTextStyle": "light"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#7A827D",
+    "selectedColor": "#203F38",
+    "backgroundColor": "#FDFEFC",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/today/today", "text": "今日" },
+      { "pagePath": "pages/money/money", "text": "记账" },
+      { "pagePath": "pages/habit/habit", "text": "习惯" },
+      { "pagePath": "pages/mine/mine", "text": "我的" }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

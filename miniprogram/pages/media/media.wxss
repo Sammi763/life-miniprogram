@@ -1,0 +1,25 @@
+.year-card { margin-bottom: 16rpx; }
+.year-stats { display: flex; justify-content: space-around; text-align: center; }
+.year-stats view { display: flex; flex-direction: column; }
+.year-stats view > text:first-child { color: var(--terra); font-size: 42rpx; font-weight: 600; }.year-stats view > text:last-child { color: var(--ink-2); font-size: 22rpx; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; padding: 8rpx 24rpx 20rpx; }
+.media-chips { flex: 1; gap: 14rpx; }
+.view-switch { display: flex; gap: 22rpx; color: var(--ink-2); font-size: 36rpx; padding-left: 20rpx; }
+.view-switch .active { color: var(--terra); }
+.media-grid { display: flex; flex-wrap: wrap; padding: 0 12rpx; }
+.media-card { width: calc(50% - 24rpx); padding: 16rpx; margin: 0 12rpx 24rpx; box-sizing: border-box; position: relative; }
+.media-monogram { width: 100%; height: 270rpx; border-radius: 16rpx; display: flex; flex-direction: column; align-items: flex-start; justify-content: space-between; box-sizing: border-box; padding: 22rpx; }
+.media-kind { font-size: 22rpx; letter-spacing: 6rpx; opacity: .74; }
+.media-initial { font-size: 70rpx; font-weight: 600; line-height: 1; letter-spacing: 2rpx; }
+.media-title { font-size: 28rpx; font-weight: 600; margin-top: 16rpx; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.media-meta { display: flex; justify-content: space-between; color: var(--terra); font-size: 22rpx; margin-top: 8rpx; }
+.media-comment { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 8rpx; }
+.media-delete { color: var(--ink-2); font-size: 20rpx; padding: 8rpx 0 0 14rpx; }
+.media-list-row { display: flex; align-items: center; padding: 22rpx 28rpx; }
+.list-type { width: 64rpx; height: 64rpx; border-radius: 16rpx; display: flex; flex-direction: column; justify-content: center; align-items: center; margin-right: 18rpx; font-size: 17rpx; line-height: 1.15; }
+.list-type text:last-child { font-size: 24rpx; font-weight: 600; margin-top: 2rpx; }
+.list-main { flex: 1; min-width: 0; }
+.list-main > view:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rating-input { color: var(--line); font-size: 48rpx; letter-spacing: 8rpx; }
+.star-on { color: var(--terra); }
+textarea { width: auto; min-height: 120rpx; background: #fff; border: 1rpx solid var(--line); border-radius: 16rpx; padding: 20rpx 24rpx; font-size: 28rpx; }

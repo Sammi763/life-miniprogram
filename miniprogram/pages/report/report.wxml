@@ -1,0 +1,57 @@
+<view class="theme-page" style="{{themeStyle}}">
+<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，以下为已同步到本机的数据</text><text bindtap="onPullDownRefresh" style="font-weight:600">重试</text></view>
+
+<view class="report-head">
+  <text class="report-arrow" bindtap="previousMonth">‹</text>
+  <view class="h1">{{monthText}}</view>
+  <text class="report-arrow {{canNext ? '' : 'report-arrow-disabled'}}" bindtap="nextMonth">›</text>
+</view>
+<view class="privacy-note">仅你可见 · 所有统计均在本机根据已同步记录计算</view>
+
+<view class="card finance-hero">
+  <view class="card-title"><text>财务回顾</text><text class="sub">本月结余</text></view>
+  <view class="balance">¥{{finance.balance}}</view>
+  <view class="finance-grid">
+    <view><view class="sub">收入</view><view class="money-in finance-number">+¥{{finance.income}}</view><view class="sub">较上月 {{finance.incomeChange >= 0 ? '+' : ''}}{{finance.incomeChange}}</view></view>
+    <view><view class="sub">支出</view><view class="money-out finance-number">-¥{{finance.expense}}</view><view class="sub">较上月 {{finance.expenseChange >= 0 ? '+' : ''}}{{finance.expenseChange}}</view></view>
+  </view>
+  <view wx:if="{{finance.budget > 0}}" class="budget-block"><view class="budget-row"><text>预算进度</text><text>{{finance.budgetUsed}}% · ¥{{finance.expense}} / ¥{{finance.budget}}</text></view><view class="bar"><view class="bar-fill {{finance.budgetUsed >= 90 ? 'bar-hot' : ''}}" style="width: {{finance.budgetUsed > 100 ? 100 : finance.budgetUsed}}%"></view></view></view>
+  <view wx:else class="sub budget-empty">未设置月预算，可在「我的」页补充。</view>
+</view>
+
+<view class="card">
+  <view class="card-title"><text>支出分类 Top 3</text></view>
+  <view wx:if="{{finance.topCategories.length === 0}}" class="empty">这个月还没有支出记录</view>
+  <view wx:for="{{finance.topCategories}}" wx:key="category" class="rank-row"><view class="rank-number">{{index + 1}}</view><text class="rank-name">{{item.category}}</text><text>¥{{item.amount}}</text></view>
+</view>
+
+<view wx:if="{{finance.categoryBudgets.length}}" class="card">
+  <view class="card-title"><text>分类预算</text><text class="sub">下月建议按近期开销预留</text></view>
+  <view wx:for="{{finance.categoryBudgets}}" wx:key="category" class="category-budget-row">
+    <view><text>{{item.category}}</text><view class="sub">¥{{item.spent}} / ¥{{item.budget}}<text wx:if="{{item.over}}" class="budget-over"> · 超出 ¥{{item.over}}</text></view></view>
+    <view class="category-budget-side"><text class="{{item.over ? 'money-out' : ''}}">{{item.used}}%</text><view class="sub">建议 ¥{{item.suggested}}</view></view>
+  </view>
+</view>
+
+<view class="card">
+  <view class="card-title"><text>每日支出趋势</text><text class="sub">仅显示有支出的日期</text></view>
+  <view wx:if="{{trend.length === 0}}" class="empty">记下一笔支出后，这里会出现趋势</view>
+  <view wx:for="{{trend}}" wx:key="date" class="trend-row"><text class="trend-day">{{item.day}} 日</text><view class="trend-track"><view class="trend-fill" style="width: {{item.width}}%"></view></view><text class="trend-amount">¥{{item.amount}}</text></view>
+</view>
+
+<view class="section-label">生活回顾</view>
+<view class="card life-grid">
+  <view class="life-cell"><view class="sub">习惯达标率</view><view class="life-value">{{life.habit.rate}}%</view></view>
+  <view class="life-cell"><view class="sub">日程完成率</view><view class="life-value">{{life.plan.rate}}%</view><view class="sub">{{life.plan.done}} / {{life.plan.total}} 项</view></view>
+  <view class="life-cell"><view class="sub">体重变化</view><view class="life-value">{{life.weight.hasData ? life.weight.change : '—'}}<text wx:if="{{life.weight.hasData}}"> kg</text></view></view>
+  <view class="life-cell"><view class="sub">完成书影音</view><view class="life-value">{{life.media.completed}}<text> 部</text></view><view class="sub" wx:if="{{life.media.averageRating}}">均分 {{life.media.averageRating}}</view></view>
+</view>
+
+<view class="card">
+  <view class="card-title"><text>本月记忆</text><text class="sub">纯文字 · 本机统计</text></view>
+  <view wx:if="{{life.memory.count === 0}}" class="empty">这个月还没有留下随记，下一次把此刻写下来吧。</view>
+  <view wx:else class="memory-month-row"><view><view class="life-value">{{life.memory.count}}<text> 条</text></view><view class="sub">记录了 {{life.memory.days}} 天</view></view><view class="memory-month-copy"><view wx:if="{{life.memory.topTags.length}}" class="sub">常用：<text wx:for="{{life.memory.topTags}}" wx:key="tag" class="month-tag">#{{item.tag}}</text></view><view wx:if="{{life.memory.moods.length}}" class="sub">心情：<text wx:for="{{life.memory.moods}}" wx:key="mood" class="month-tag">{{item.mood}} {{item.count}}</text></view></view></view>
+</view>
+
+<view class="card summary-card"><view class="card-title"><text>本月一句话</text><text class="ai-label">{{aiSummaryLoading ? '整理中…' : aiSummaryLabel}}</text></view><view class="summary-text">{{aiSummary ? aiSummary : summary}}</view><view class="sub summary-note">{{aiConsent ? '仅用于你的生活空间，可在「我的」关闭 AI' : '本机基于本月已同步内容整理'}}</view></view>
+</view>

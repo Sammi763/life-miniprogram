@@ -1,0 +1,48 @@
+<view class="login-page theme-page" style="{{themeStyle}}">
+  <view class="login-orb login-orb-one"></view>
+  <view class="login-orb login-orb-two"></view>
+  <view class="brand-block">
+    <view class="brand-logo-wrap"><image class="brand-logo" src="/assets/logo.png" mode="aspectFit"></image></view>
+    <view class="brand-kicker">LIFE NOTES</view>
+    <view class="brand-title">生活记忆 life</view>
+    <view class="brand-sub">把生活，慢慢放回自己的手里</view>
+  </view>
+
+  <view class="card login-card" wx:if="{{!loggedIn}}">
+    <view class="login-kicker">YOUR PRIVATE SPACE</view>
+    <view class="login-title">把生活留给自己</view>
+    <view class="login-copy">登录后，账本、习惯、日程与每一条随记都会安静地同步到你的专属空间。</view>
+    <view wx:if="{{serverError}}" class="server-error">{{serverError}}</view>
+    <checkbox-group class="terms-group" bindchange="onTermsChange">
+      <label class="terms-row">
+        <checkbox value="accepted" checked="{{termsAccepted}}" color="{{themeAccent}}" />
+        <view class="terms-copy">我已阅读并同意<text class="terms-link" catchtap="openLegal" data-doc="service">《用户服务协议》</text>和<text class="terms-link" catchtap="openLegal" data-doc="privacy">《隐私政策》</text></view>
+      </label>
+    </checkbox-group>
+    <view wx:if="{{existingSessionNeedsTerms}}" class="terms-hint">已验证当前账号，请确认协议后继续使用。</view>
+    <button class="btn btn-primary login-btn" loading="{{loggingIn}}" disabled="{{loggingIn || !termsAccepted}}" bindtap="onLogin">微信登录并开始</button>
+    <view class="login-trust"><text class="trust-dot"></text><text>你的记录仅用于你的生活空间</text></view>
+    <view class="sub privacy-copy">登录由微信完成；昵称和手机号仅在你主动填写或授权后使用。个性化 AI 默认关闭。</view>
+  </view>
+
+  <view class="card profile-card" wx:else>
+    <view class="profile-card-head"><view><view class="login-kicker">PROFILE</view><view class="profile-title">{{editingProfile ? '编辑资料' : '完善资料'}}</view></view><text class="sub">可选</text></view>
+    <view class="avatar-area">
+      <view class="avatar text-avatar {{avatarTone}}">{{avatarText}}</view>
+      <view class="sub">文字头像会随昵称自动生成</view>
+    </view>
+    <view class="field">
+      <view class="field-label">昵称</view>
+      <input type="nickname" maxlength="32" value="{{nickname}}" bindinput="onNickname" placeholder="请输入昵称" />
+    </view>
+    <view class="phone-row">
+      <view>
+        <view>手机号</view>
+        <view class="sub">{{hasPhone ? phoneText : '用于找回和保护你的数据'}}</view>
+      </view>
+      <button class="phone-btn" loading="{{phoneLoading}}" open-type="getPhoneNumber" bindgetphonenumber="onGetPhoneNumber">{{hasPhone ? '重新授权' : '授权手机号'}}</button>
+    </view>
+    <button class="btn btn-primary complete-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="completeProfile">{{editingProfile ? '保存资料' : '完成，进入生活记忆'}}</button>
+    <view class="sub privacy-copy">手机号只用于账号绑定，服务端不会接受前端直接提交的号码。</view>
+  </view>
+</view>

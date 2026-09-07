@@ -1,0 +1,8 @@
+<view class="tabbar-shell" style="{{themeStyle}}">
+  <view class="tabbar">
+    <view wx:for="{{list}}" wx:key="pagePath" class="tab-item {{selected == index ? 'is-selected' : ''}}" hover-class="tab-item-pressed" bindtap="onTabTap" data-index="{{index}}">
+      <view class="tab-icon">{{item.glyph}}</view>
+      <view class="tab-text">{{item.text}}</view>
+    </view>
+  </view>
+</view>

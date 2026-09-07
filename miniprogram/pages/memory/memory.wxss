@@ -1,0 +1,212 @@
+.memory-page { padding: 22rpx 0 80rpx; }
+
+.memory-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin: 22rpx 32rpx 28rpx;
+}
+.memory-heading { min-width: 0; }
+.memory-eyebrow {
+  color: var(--accent);
+  font-size: 19rpx;
+  font-weight: 700;
+  letter-spacing: 3rpx;
+}
+.memory-title {
+  margin-top: 8rpx;
+  color: var(--ink);
+  font-size: 46rpx;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: .5rpx;
+}
+.memory-stats {
+  display: flex;
+  align-items: baseline;
+  gap: 8rpx;
+  margin-top: 14rpx;
+  color: var(--ink-2);
+  font-size: 23rpx;
+}
+.memory-stats-number { color: var(--accent); font-size: 28rpx; font-weight: 700; }
+.memory-stats-divider { margin: 0 2rpx; color: #B5BDB7; }
+.memory-search {
+  display: flex;
+  align-items: center;
+  padding: 10rpx 0 10rpx 20rpx;
+  color: var(--accent);
+  font-size: 25rpx;
+  white-space: nowrap;
+}
+.memory-search-icon { margin-right: 5rpx; font-size: 30rpx; }
+
+.memory-hero {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  margin: 0 24rpx 22rpx;
+  padding: 30rpx 30rpx 28rpx;
+  border-radius: 28rpx;
+  color: #F7FCF8;
+  background: linear-gradient(135deg, var(--hero-start), var(--hero-end));
+  box-shadow: 0 18rpx 36rpx var(--hero-shadow);
+}
+.memory-hero-copy { min-width: 0; }
+.memory-hero-kicker {
+  color: rgba(247, 252, 248, .62);
+  font-size: 18rpx;
+  letter-spacing: 2.4rpx;
+}
+.memory-hero-title { margin-top: 8rpx; font-size: 39rpx; font-weight: 700; }
+.memory-hero-sub { margin-top: 6rpx; color: rgba(247, 252, 248, .72); font-size: 23rpx; }
+.memory-hero-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  margin-left: 20rpx;
+  color: var(--hero-edit);
+  font-size: 23rpx;
+  font-weight: 600;
+}
+.memory-hero-plus {
+  width: 58rpx;
+  height: 58rpx;
+  line-height: 53rpx;
+  margin-top: 10rpx;
+  text-align: center;
+  border-radius: 50%;
+  color: var(--hero-soft-ink);
+  background: var(--hero-soft);
+  font-size: 40rpx;
+}
+
+.filter-card { padding: 24rpx 28rpx 20rpx; }
+.filter-topline { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14rpx; }
+.filter-title { color: var(--ink); font-size: 25rpx; font-weight: 600; }
+.filter-total { color: var(--ink-2); font-size: 22rpx; }
+.memory-search-input {
+  display: flex;
+  align-items: center;
+  height: 72rpx;
+  box-sizing: border-box;
+  padding: 0 18rpx;
+  border: 1rpx solid var(--line);
+  border-radius: 16rpx;
+  background: var(--surface);
+  color: var(--ink-2);
+}
+.memory-search-input-icon { font-size: 28rpx; }
+.memory-search-input input { flex: 1; min-width: 0; margin-left: 10rpx; font-size: 26rpx; }
+.filter-scroll { white-space: nowrap; margin-top: 16rpx; }
+.tag-scroll { margin-top: 10rpx; }
+.filter-line { display: inline-flex; gap: 12rpx; }
+.filter-chip { padding: 10rpx 18rpx; background: #EEF2EE; color: var(--ink-2); border-radius: 999rpx; font-size: 24rpx; }
+.filter-chip-on { color: #FFF; background: var(--accent); }
+.clear-filter { color: var(--accent); font-size: 24rpx; text-align: right; margin-top: 12rpx; }
+
+.memory-empty {
+  margin: 28rpx 24rpx 0;
+  padding: 62rpx 32rpx 68rpx;
+  text-align: center;
+  border: 1rpx dashed #CDD9D0;
+  border-radius: 28rpx;
+  background: rgba(255, 255, 255, .55);
+}
+.memory-empty-mark {
+  width: 74rpx;
+  height: 74rpx;
+  line-height: 67rpx;
+  box-sizing: border-box;
+  margin: 0 auto 22rpx;
+  border: 1rpx solid #C5D8CD;
+  border-radius: 50%;
+  color: var(--accent);
+  font-size: 40rpx;
+}
+.memory-empty-title { color: var(--ink); font-size: 32rpx; font-weight: 700; }
+.memory-empty .sub { margin-top: 8rpx; }
+
+.memory-timeline { padding: 8rpx 32rpx 0; }
+.memory-day { margin-top: 28rpx; }
+.memory-day:first-child { margin-top: 12rpx; }
+.memory-day-head { display: flex; align-items: center; min-height: 56rpx; }
+.memory-day-dot {
+  width: 18rpx;
+  height: 18rpx;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  margin-left: 1rpx;
+  border: 5rpx solid var(--accent-soft);
+  border-radius: 50%;
+  background: var(--accent);
+}
+.memory-day-copy { margin-left: 16rpx; }
+.memory-day-label { color: var(--ink); font-size: 29rpx; font-weight: 700; }
+.memory-day-items {
+  position: relative;
+  margin: 4rpx 0 0 9rpx;
+  padding: 10rpx 0 2rpx 27rpx;
+  border-left: 2rpx solid #D7E2DA;
+}
+.memory-item {
+  position: relative;
+  margin: 0 0 14rpx;
+  padding: 24rpx;
+  border-radius: 22rpx;
+}
+.memory-item:last-child { margin-bottom: 0; }
+.memory-item-marker {
+  position: absolute;
+  left: -36rpx;
+  top: 31rpx;
+  width: 14rpx;
+  height: 14rpx;
+  box-sizing: border-box;
+  border: 4rpx solid var(--bg);
+  border-radius: 50%;
+  background: #84A99B;
+}
+.memory-item-top { display: flex; align-items: center; gap: 14rpx; margin-bottom: 14rpx; }
+.memory-time { color: var(--ink-2); font-size: 24rpx; }
+.memory-mood { color: var(--accent); background: var(--accent-soft); padding: 4rpx 12rpx; border-radius: 999rpx; font-size: 22rpx; }
+.memory-delete { margin-left: auto; padding: 8rpx; color: #9DA79F; font-size: 22rpx; }
+.memory-content { white-space: pre-wrap; color: var(--ink); line-height: 1.75; font-size: 29rpx; }
+.memory-tags { margin-top: 16rpx; color: var(--accent); font-size: 24rpx; }
+
+.undo-bar {
+  position: fixed;
+  z-index: 20;
+  left: 32rpx;
+  right: 32rpx;
+  bottom: 142rpx;
+  display: flex;
+  justify-content: space-between;
+  padding: 22rpx 28rpx;
+  border-radius: 18rpx;
+  background: #213E36;
+  color: #FFF;
+  font-size: 26rpx;
+  box-shadow: 0 10rpx 28rpx rgba(24, 53, 44, .22);
+}
+.undo-bar text:last-child { color: #C8E6D4; font-weight: 700; }
+
+.memory-sheet { max-height: 88vh; overflow-y: auto; }
+.memory-editor {
+  width: 100%;
+  min-height: 240rpx;
+  box-sizing: border-box;
+  padding: 20rpx;
+  background: var(--surface);
+  border: 1rpx solid var(--line);
+  border-radius: 16rpx;
+  line-height: 1.7;
+  font-size: 30rpx;
+}
+.draft-tip { margin: 0 0 16rpx; color: var(--accent); font-size: 23rpx; }
+.memory-time-row { display: flex; align-items: center; gap: 18rpx; }
+.memory-time-row .field-label { min-width: 128rpx; margin: 0; }
+.memory-time-row .picker-value { color: var(--ink); font-size: 26rpx; }
+.recent-tags { margin: -6rpx 0 22rpx; white-space: nowrap; overflow: hidden; }
+.recent-tag { display: inline-block; margin-right: 16rpx; color: var(--accent); font-size: 23rpx; }

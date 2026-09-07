@@ -1,0 +1,101 @@
+/* 生活记忆 life · 静谧、克制的石墨绿视觉系统 */
+page {
+  --bg: #F3F5F2;
+  --card: #FFFFFF;
+  --surface: #FAFBF9;
+  --ink: #1C2520;
+  --ink-2: #78817B;
+  --line: #E2E7E1;
+  --accent: #315C52;
+  --accent-strong: #23483F;
+  --accent-soft: #E3EEE8;
+  --accent-wash: #F0F5F1;
+  --terra: var(--accent);
+  --terra-soft: var(--accent-soft);
+  --green: #39745D;
+  --green-soft: #E3F0E8;
+  --red: #B95755;
+  --amber: #9A7338;
+  --danger: var(--red);
+  --card-border: rgba(210,220,212,.82);
+  --shadow-color: rgba(31,56,43,.045);
+  --pressed-shadow: rgba(31,56,43,.09);
+  --button-shadow: rgba(35,72,63,.18);
+  --button-shadow-strong: rgba(35,72,63,.28);
+  --mask-color: rgba(17,30,25,.42);
+  --sheet-shadow: rgba(18,37,29,.12);
+  --hero-start: #2E564C;
+  --hero-end: #203F38;
+  --hero-shadow: rgba(29,68,58,.20);
+  --hero-edit: #E4F0E8;
+  --hero-soft: #D9E9DE;
+  --hero-soft-ink: #23483F;
+  --tab-bg: rgba(255,255,255,.96);
+  --tab-line: rgba(210,220,212,.88);
+  --tab-text: #7A827D;
+  --tab-selected: #203F38;
+  --tab-selected-bg: #E3EEE8;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 28rpx;
+  line-height: 1.6;
+  letter-spacing: .2rpx;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", sans-serif;
+  box-sizing: border-box;
+}
+
+/* 自定义底部导航悬浮在内容之上，四个 Tab 页在 WXML 末尾放置此安全留白。 */
+.tabbar-spacer { height: 190rpx; }
+.theme-page { min-height:100vh; background:var(--bg); color:var(--ink); }
+
+.card {
+  background: var(--card);
+  border-radius: 28rpx;
+  padding: 32rpx;
+  margin: 0 24rpx 20rpx;
+  border: 1rpx solid var(--card-border);
+  box-shadow: 0 12rpx 34rpx var(--shadow-color);
+}
+
+.record-card { transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease; }
+.record-card-pressed { transform: scale(.988); background-color: var(--surface); box-shadow: 0 10rpx 24rpx var(--pressed-shadow); }
+
+.text-avatar { display:flex; align-items:center; justify-content:center; border-radius:50%; font-weight:700; letter-spacing:1rpx; }
+.avatar-tone-0 { background:#E8E0CF; color:#775A26; }
+.avatar-tone-1 { background:#DFEBDD; color:#42634B; }
+.avatar-tone-2 { background:#DFE9ED; color:#3F6872; }
+.avatar-tone-3 { background:#EEE4D5; color:#866333; }
+.avatar-tone-4 { background:#E8E1ED; color:#695779; }
+
+.card-title { font-size:31rpx; font-weight:700; margin-bottom:22rpx; display:flex; align-items:center; justify-content:space-between; }
+.card-title .more { font-size:24rpx; font-weight:500; color:var(--ink-2); }
+.ai-label { padding:6rpx 12rpx; border-radius:999rpx; color:var(--accent); background:var(--accent-soft); font-size:20rpx; font-weight:500; }
+.h1 { font-size:42rpx; font-weight:700; letter-spacing:.4rpx; }
+.sub { color:var(--ink-2); font-size:24rpx; }
+
+.btn { min-height:86rpx; display:flex; align-items:center; justify-content:center; border-radius:18rpx; font-size:29rpx; font-weight:600; letter-spacing:.4rpx; }
+.btn::after { border:none; }
+.btn-primary { background:linear-gradient(135deg, var(--accent), var(--accent-strong)); color:#fff; box-shadow:0 10rpx 20rpx var(--button-shadow); }
+.btn-ghost { background:var(--accent-soft); color:var(--accent); }
+.btn-line { background:var(--surface); border:1rpx solid var(--line); color:var(--ink); }
+.btn[disabled] { opacity:.5; }
+
+.chip { padding:10rpx 22rpx; border-radius:999rpx; background:var(--surface); border:1rpx solid var(--line); color:var(--ink-2); font-size:24rpx; line-height:1.4; }
+.chip.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+
+.banner { margin:20rpx 24rpx 0; padding:18rpx 24rpx; border-radius:18rpx; background:#F8F0DF; color:var(--amber); font-size:24rpx; display:flex; justify-content:space-between; align-items:center; }
+.money-in { color:var(--green); }
+.money-out { color:var(--red); }
+
+.fab { position:fixed; right:36rpx; bottom:calc(44rpx + env(safe-area-inset-bottom)); width:104rpx; height:104rpx; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:54rpx; font-weight:300; box-shadow:0 14rpx 30rpx var(--button-shadow-strong); }
+
+.mask { position:fixed; inset:0; background:var(--mask-color); z-index:9; }
+.sheet { position:fixed; left:0; right:0; bottom:0; background:var(--bg); border-radius:34rpx 34rpx 0 0; padding:36rpx 32rpx calc(40rpx + env(safe-area-inset-bottom)); z-index:10; box-shadow:0 -10rpx 36rpx var(--sheet-shadow); }
+.sheet-title { font-size:33rpx; font-weight:700; text-align:center; margin-bottom:30rpx; }
+
+.field { margin-bottom:24rpx; }
+.field-label { font-size:24rpx; color:var(--ink-2); margin-bottom:12rpx; }
+.field input, .field picker { background:var(--surface); border:1rpx solid var(--line); border-radius:16rpx; min-height:88rpx; padding:0 24rpx; font-size:31rpx; display:flex; align-items:center; width:auto; }
+.chips { display:flex; flex-wrap:wrap; gap:14rpx; }
+.empty { text-align:center; color:var(--ink-2); font-size:26rpx; padding:48rpx 0; }
+.divider { height:1rpx; background:var(--line); margin:20rpx 0; }

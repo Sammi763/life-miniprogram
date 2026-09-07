@@ -1,0 +1,23 @@
+{
+  "compileType": "miniprogram",
+  "appid": "touristappid",
+  "projectname": "生活记忆 life",
+  "libVersion": "3.4.3",
+  "setting": {
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "urlCheck": false,
+    "coverView": true,
+    "autoAudits": false,
+    "checkInvalidKey": true,
+    "checkSiteMap": false,
+    "compileHotReLoad": true
+  },
+  "condition": {},
+  "editorSetting": {
+    "tabIndent": "insertSpaces",
+    "tabSize": 2
+  }
+}

@@ -1,0 +1,13 @@
+.shopping-summary { display: flex; align-items: center; justify-content: space-between; }
+.summary-num { color: var(--terra); font-size: 40rpx; font-weight: 600; margin-top: 6rpx; }
+.summary-num text { color: var(--ink-2); font-size: 22rpx; font-weight: 400; }
+.clear-done { color: var(--terra); font-size: 24rpx; padding: 12rpx 0 12rpx 16rpx; }
+.shopping-item { display: flex; align-items: center; padding: 22rpx 28rpx; }
+.shopping-done { opacity: .58; }
+.shopping-check { width: 44rpx; height: 44rpx; border: 2rpx solid var(--line); color: transparent; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26rpx; flex-shrink: 0; margin-right: 20rpx; }
+.shopping-check-on { background: var(--green); border-color: var(--green); color: #fff; }
+.shopping-main { flex: 1; min-width: 0; }
+.shopping-name { font-size: 30rpx; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.link-action, .delete-action { color: var(--terra); font-size: 22rpx; padding: 12rpx 0 12rpx 16rpx; }
+.delete-action { color: var(--ink-2); }
+.switch-row { display: flex; align-items: center; justify-content: space-between; margin: 12rpx 0 28rpx; }

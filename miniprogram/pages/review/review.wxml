@@ -1,0 +1,13 @@
+<view class="theme-page" style="{{themeStyle}}">
+<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，以下基于本机已有记录</text><text bindtap="onPullDownRefresh" style="font-weight:600">重试</text></view>
+<view class="review-head"><text class="review-arrow" bindtap="previousWeek">‹</text><view bindtap="goCurrentWeek"><view class="h1">每周复盘</view><view class="sub">{{weekLabel}} · 点此回到本周</view></view><text class="review-arrow {{canNext ? '' : 'disabled'}}" bindtap="nextWeek">›</text></view>
+<view class="privacy-note">仅你可见 · 根据已同步文字记录在本机计算</view>
+
+<view class="card review-focus"><view class="card-title"><text>这一周的账本</text><text class="sub">转账不计入收支</text></view><view class="review-money"><view><view class="sub">收入</view><view class="money-in">+¥{{review.finance.income}}</view></view><view><view class="sub">支出</view><view class="money-out">-¥{{review.finance.expense}}</view></view><view><view class="sub">结余</view><view>¥{{review.finance.balance}}</view></view></view></view>
+
+<view class="card"><view class="card-title"><text>完成情况</text></view><view class="review-grid"><view><view class="sub">日程完成</view><view class="review-number">{{review.plan.rate}}%</view><view class="sub">{{review.plan.done}} / {{review.plan.total}} 项</view></view><view><view class="sub">习惯达标</view><view class="review-number">{{review.habit.rate}}%</view><view class="sub">{{review.habit.done}} / {{review.habit.total}} 次</view></view><view><view class="sub">体重变化</view><view class="review-number">{{review.weight.change}}<text> kg</text></view></view></view></view>
+
+<view class="card"><view class="card-title"><text>这周留下的记忆</text><text class="sub">{{review.memories.count}} 条 · {{review.memories.days}} 天</text></view><view wx:if="{{review.memories.count === 0}}" class="empty">这周还没有随记，给下一周留一个入口吧。</view><view wx:else class="memory-review"><view wx:if="{{review.memories.topTags.length}}" class="sub">常用标签：<text wx:for="{{review.memories.topTags}}" wx:key="tag" class="review-tag">#{{item.tag}}</text></view><view wx:if="{{review.memories.moods.length}}" class="sub">心情：<text wx:for="{{review.memories.moods}}" wx:key="mood" class="review-tag">{{item.mood}} {{item.count}}</text></view></view></view>
+
+<view class="card"><view class="card-title"><text>下周先安排</text></view><view wx:if="{{review.nextPlans.length === 0}}" class="empty">下周暂无未完成日程，给自己留一点空间。</view><view wx:for="{{review.nextPlans}}" wx:key="id" class="next-plan"><text>{{item.date.slice(5)}} {{item.time}}</text><text>{{item.title}}</text></view></view>
+</view>

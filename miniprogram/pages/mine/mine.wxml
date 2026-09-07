@@ -1,0 +1,75 @@
+<view class="mine-page theme-page" style="{{themeStyle}}">
+  <view class="profile-hero">
+    <view class="profile-main">
+      <view class="profile-avatar text-avatar {{profile.avatarTone}}">{{profile.avatarText}}</view>
+      <view class="profile-copy">
+        <view class="profile-eyebrow">MY LIFE SPACE</view>
+        <view class="profile-name">{{profile.nickname}}</view>
+        <view class="profile-phone">{{profile.hasPhone ? '手机号已保护' : '可绑定手机号保护账号'}}</view>
+      </view>
+      <view class="profile-edit" bindtap="editProfile">编辑</view>
+    </view>
+    <view class="profile-rule"></view>
+    <view class="profile-stats">
+      <view><text>{{recordCount}}</text><text>已记录</text></view>
+      <view><text>{{pendingCount}}</text><text>待同步</text></view>
+      <view><text>{{profile.hasPhone ? '已保护' : '未绑定'}}</text><text>账号状态</text></view>
+    </view>
+  </view>
+
+  <view class="card data-status">
+    <view class="section-head">
+      <view><view class="section-kicker">SYNC & PRIVACY</view><view class="section-title">数据状态</view></view>
+      <view class="status-pill {{syncTone}}"><text></text>{{syncText}}</view>
+    </view>
+    <view class="sync-detail">{{syncDetail}}</view>
+    <view class="sync-note" wx:if="{{pendingCount > 0}}">无需手动操作，网络恢复后将自动继续。</view>
+  </view>
+
+  <view class="card theme-card">
+    <view class="section-head"><view><view class="section-kicker">PERSONAL STYLE</view><view class="section-title">界面主题</view></view><text class="sub">选择你的日常色彩</text></view>
+    <view class="theme-grid">
+      <view wx:for="{{themeOptions}}" wx:key="id" class="theme-option {{item.selected ? 'theme-option-on' : ''}}" bindtap="onThemeSelect" data-theme="{{item.id}}">
+        <view class="theme-preview" style="background: {{item.preview}};"></view>
+        <view class="theme-copy"><view>{{item.name}}</view><view class="sub">{{item.detail}}</view></view>
+        <view wx:if="{{item.selected}}" class="theme-check">✓</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card budget-card">
+    <view class="section-head budget-head"><view><view class="section-kicker">MONTHLY PLAN</view><view class="section-title">本月预算</view></view><text class="sub">同步到首页与月报</text></view>
+    <view class="budget-main-row"><text>¥</text><input class="budget-main-input" type="digit" value="{{budgetInput}}" bindinput="onBudgetInput" placeholder="不设上限" /></view>
+    <view class="budget-caption">按分类设一个轻松可执行的范围（可选）</view>
+    <view class="category-budget-list">
+      <view wx:for="{{categoryBudgetInputs}}" wx:key="key" class="category-budget-input"><text>{{item.key}}</text><view><text>¥</text><input type="digit" value="{{item.value}}" bindinput="onCategoryBudgetInput" data-key="{{item.key}}" placeholder="不限" /></view></view>
+    </view>
+    <button class="btn btn-ghost budget-save" bindtap="saveBudget">保存预算</button>
+  </view>
+
+  <view class="module-section">
+    <view class="section-intro"><view><view class="section-kicker">LIFE TOOLS</view><view class="section-title">生活工具</view></view><text class="sub">慢慢整理生活</text></view>
+    <view class="card module-card">
+      <view wx:for="{{modules}}" wx:key="url" class="module-row" bindtap="goModule" data-url="{{item.url}}">
+        <view class="module-glyph module-glyph-{{item.tone}}">{{item.glyph}}</view>
+        <view class="module-copy"><view>{{item.title}}</view><view class="sub">{{item.detail}}</view></view>
+        <text class="module-arrow">›</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="card settings-card">
+    <view class="section-head"><view><view class="section-kicker">DATA CONTROL</view><view class="section-title">数据与隐私</view></view></view>
+    <view class="setting-row ai-setting"><view><view>个性化 AI 文案</view><view class="sub">默认关闭，开启前会说明数据范围</view></view><switch checked="{{aiConsent}}" color="{{themeAccent}}" bindchange="onAiConsentChange" /></view>
+    <view class="setting-row" bindtap="goLegal" data-doc="privacy"><view><view>隐私政策与数据说明</view><view class="sub">信息用途、留存与删除方式</view></view><text>›</text></view>
+    <view class="setting-row" bindtap="goLegal" data-doc="service"><view><view>用户服务协议</view><view class="sub">服务边界与联系我们</view></view><text>›</text></view>
+    <view class="setting-row" bindtap="goLegal" data-doc="sharing"><view><view>第三方处理说明</view><view class="sub">微信能力与可选 DeepSeek AI</view></view><text>›</text></view>
+    <view class="setting-row" bindtap="exportFromServer"><view><view>导出云端备份</view><view class="sub">生成自己的 JSON 副本</view></view><text>›</text></view>
+    <view class="setting-row" bindtap="copyBackup"><view><view>复制本机备份</view><view class="sub">便于临时保存和迁移</view></view><text>›</text></view>
+    <view wx:if="{{showDemoControls}}" class="setting-row" bindtap="clearDemo"><view><view>清理示例内容</view><view class="sub">不会影响自己添加的记录</view></view><text>›</text></view>
+    <view class="setting-row setting-danger" bindtap="deleteAccount"><view><view>永久删除账户与数据</view><view class="sub">删除前会要求一次新的微信登录校验</view></view><text>{{deletingAccount ? '处理中' : '›'}}</text></view>
+    <view class="logout-entry" bindtap="logout">退出当前账号</view>
+  </view>
+
+  <view class="tabbar-spacer"></view>
+</view>

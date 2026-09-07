@@ -1,0 +1,146 @@
+/* 月度统计只读取已同步到本地的记录；AI 一句话由页面通过受保护接口按需请求。 */
+const { derivePlanOccurrences, valuesOfRecords } = require('./plan-utils');
+const { buildMemorySummary } = require('./memory-utils');
+const { buildCategoryBudgetProgress } = require('./ledger-utils');
+
+function monthBounds(month) {
+  const match = String(month || '').match(/^(\d{4})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const index = Number(match[2]) - 1;
+  if (index < 0 || index > 11) return null;
+  const first = new Date(year, index, 1);
+  const last = new Date(year, index + 1, 0);
+  return {
+    start: month + '-01',
+    end: year + '-' + String(index + 1).padStart(2, '0') + '-' + String(last.getDate()).padStart(2, '0'),
+    previous: new Date(year, index - 1, 1).getFullYear() + '-' + String(new Date(year, index - 1, 1).getMonth() + 1).padStart(2, '0')
+  };
+}
+
+function recordData(records) {
+  return valuesOfRecords(records).map((record) => ({ id: record.id, ...record.data, updatedAt: record.updatedAt }));
+}
+
+function round(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function oneDecimal(value) {
+  return Math.round((Number(value) || 0) * 10) / 10;
+}
+
+function formatMoney(value) {
+  const number = round(value);
+  return Number.isInteger(number) ? String(number) : number.toFixed(2);
+}
+
+function sumMoney(records, prefix) {
+  let income = 0;
+  let expense = 0;
+  const byCategory = {};
+  const byDate = {};
+  records.forEach((item) => {
+    if (String(item.date || '').slice(0, 7) !== prefix) return;
+    const amount = Number(item.amount);
+    if (!Number.isFinite(amount) || amount < 0) return;
+    if (item.type === 'income') income += amount;
+    if (item.type === 'expense') {
+      expense += amount;
+      const category = String(item.category || '其他');
+      byCategory[category] = (byCategory[category] || 0) + amount;
+    }
+    // 支出趋势不应把“只有收入”的日期渲染为 ¥0；收入仍照常计入收支与结余。
+    const date = String(item.date || '');
+    if (date && item.type === 'expense') byDate[date] = (byDate[date] || 0) + amount;
+  });
+  return { income: round(income), expense: round(expense), byCategory, byDate };
+}
+
+function habitSummary(records, bounds) {
+  const definitions = records.filter((item) => item.kind === 'def' && item.id);
+  const entries = {};
+  records.filter((item) => item.kind === 'entry' && item.habitId && item.date >= bounds.start && item.date <= bounds.end)
+    .forEach((item) => { entries[item.habitId + '|' + item.date] = item; });
+  const days = Number(bounds.end.slice(-2));
+  let total = definitions.length * days;
+  let done = 0;
+  definitions.forEach((definition) => {
+    const target = Number(definition.target) || 1;
+    for (let day = 1; day <= days; day++) {
+      const date = bounds.start.slice(0, 8) + String(day).padStart(2, '0');
+      const entry = entries[definition.id + '|' + date];
+      const value = Number(entry && entry.value) || 0;
+      if (definition.mode === 'check' ? value >= 1 : value >= target) done++;
+    }
+  });
+  return { total, done, rate: total ? oneDecimal(done * 100 / total) : 0 };
+}
+
+function weightSummary(records, bounds) {
+  const weights = records.filter((item) => item.kind === 'weight' && item.date >= bounds.start && item.date <= bounds.end && Number(item.weight) > 0)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || Number(a.updatedAt) - Number(b.updatedAt));
+  if (!weights.length) return { start: 0, end: 0, change: 0, hasData: false };
+  const first = Number(weights[0].weight);
+  const last = Number(weights[weights.length - 1].weight);
+  return { start: oneDecimal(first), end: oneDecimal(last), change: oneDecimal(last - first), hasData: true };
+}
+
+function mediaSummary(records, bounds) {
+  const done = records.filter((item) => item.status === 'done' && item.date >= bounds.start && item.date <= bounds.end);
+  const rated = done.filter((item) => Number(item.rating) > 0);
+  return {
+    completed: done.length,
+    averageRating: rated.length ? oneDecimal(rated.reduce((sum, item) => sum + Number(item.rating), 0) / rated.length) : 0
+  };
+}
+
+function buildSummary(finance, life) {
+  const financeSentence = '本月收入 ¥' + formatMoney(finance.income) + '，支出 ¥' + formatMoney(finance.expense) + '，结余 ¥' + formatMoney(finance.balance) + '。';
+  const budgetSentence = finance.budget > 0 ? '预算已使用 ' + finance.budgetUsed.toFixed(1) + '%。' : '本月尚未设置预算。';
+  const lifeSentence = '习惯达标率 ' + life.habit.rate.toFixed(1) + '%，日程完成率 ' + life.plan.rate.toFixed(1) + '%。';
+  const weightSentence = life.weight.hasData ? '体重变化 ' + (life.weight.change > 0 ? '+' : '') + life.weight.change.toFixed(1) + ' kg。' : '本月没有体重记录。';
+  const mediaSentence = '本月完成 ' + life.media.completed + ' 部书影音' + (life.media.averageRating ? '，平均评分 ' + life.media.averageRating.toFixed(1) + ' 分。' : '。');
+  const memorySentence = life.memory.count ? '留下 ' + life.memory.count + ' 条文字记忆，跨越 ' + life.memory.days + ' 天。' : '这个月还没有留下随记。';
+  const overspentSentence = finance.overspent.length ? '分类预算超出：' + finance.overspent.map((item) => item.category).join('、') + '。' : '';
+  return financeSentence + budgetSentence + overspentSentence + lifeSentence + weightSentence + mediaSentence + memorySentence;
+}
+
+function buildMonthlyReport(source, month) {
+  const bounds = monthBounds(month);
+  if (!bounds) throw new Error('invalid_month');
+  const money = recordData(source && source.money);
+  const current = sumMoney(money, month);
+  const previous = sumMoney(money, bounds.previous);
+  const settings = recordData(source && source.settings);
+  const appSettings = settings.find((item) => item.id === 'app') || settings[0] || {};
+  const budget = round(Math.max(0, Number(appSettings.budget) || 0));
+  const categoryBudget = buildCategoryBudgetProgress(money, appSettings.categoryBudgets, month);
+  const occurrences = derivePlanOccurrences(source && source.plan, bounds.start, bounds.end);
+  const planRelevant = occurrences.filter((item) => !item.skipped);
+  const planDone = planRelevant.filter((item) => item.done).length;
+  const finance = {
+    income: current.income,
+    expense: current.expense,
+    balance: round(current.income - current.expense),
+    budget,
+    budgetUsed: budget ? oneDecimal(current.expense * 100 / budget) : 0,
+    incomeChange: round(current.income - previous.income),
+    expenseChange: round(current.expense - previous.expense),
+    categoryBudgets: categoryBudget.rows,
+    overspent: categoryBudget.overspent,
+    topCategories: Object.keys(current.byCategory).map((category) => ({ category, amount: round(current.byCategory[category]) }))
+      .sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category, 'zh-Hans-CN')).slice(0, 3),
+    dailyTrend: Object.keys(current.byDate).sort().map((date) => ({ date, amount: round(current.byDate[date]) }))
+  };
+  const life = {
+    habit: habitSummary(recordData(source && source.habit), bounds),
+    plan: { total: planRelevant.length, done: planDone, rate: planRelevant.length ? oneDecimal(planDone * 100 / planRelevant.length) : 0 },
+    weight: weightSummary(recordData(source && source.fitness), bounds),
+    media: mediaSummary(recordData(source && source.media), bounds),
+    memory: buildMemorySummary(source && source.memories, month)
+  };
+  return { month, finance, life, summary: buildSummary(finance, life) };
+}
+
+module.exports = { buildMonthlyReport, monthBounds };
