@@ -1,0 +1,43 @@
+name: Verify life miniprogram
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install server dependencies
+        run: npm ci --prefix server
+      - name: Check JavaScript syntax
+        run: find miniprogram server tests -name '*.js' -not -path '*/node_modules/*' -print0 | xargs -0 -n 1 node --check
+      - name: Scan tracked source for accidentally committed secrets
+        run: node server/scripts/check-source-secrets.js
+      - name: Run tests with isolated local sync server
+        shell: bash
+        run: |
+          set -euo pipefail
+          STORAGE_DRIVER=file DATA_DIR="$RUNNER_TEMP/life-ci" DEV_MODE=1 PORT=8787 node server/server.js > "$RUNNER_TEMP/life-server.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:8787/api/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl --fail --silent http://127.0.0.1:8787/api/health >/dev/null
+          for test_file in $(find tests -name '*.test.js' | sort); do
+            node "$test_file"
+          done
+      - name: Audit production dependencies
+        run: npm audit --prefix server --omit=dev --audit-level=high

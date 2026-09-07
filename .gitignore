@@ -1,0 +1,11 @@
+node_modules/
+server/data/
+.env
+*.log
+.DS_Store
+server/db/backups/
+project.private.config.json
+.workbuddy/
+
+# 个人配置：appid 等本地信息写在这里，不入库
+# 微信小程序密钥、DeepSeek API Key 只放服务器 .env 或 app_secrets，禁止入库
