@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>生活记忆 life · 竞品调研报告（2026-09-29）</title>
+<style>
+  :root{
+    --bg:#F3F5F2; --card:#FFFFFF; --ink:#1B2420; --ink-2:#4A5652; --ink-3:#7A827D;
+    --line:#E2E7E1; --line-2:#EDF1EB;
+    --brand:#1F6F5C; --brand-deep:#203F38; --brand-soft:#E8F1ED;
+    --ok:#1F7A54; --ok-bg:#E6F4EC;
+    --mid:#9A6B12; --mid-bg:#FBF0DA;
+    --no:#9A3B33; --no-bg:#FAEAE7;
+    --warn:#B4531A; --warn-bg:#FCEDE2;
+    --shadow:0 1px 2px rgba(24,40,34,.05), 0 8px 24px rgba(24,40,34,.05);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#111513; --card:#1A1F1D; --ink:#E9EEEB; --ink-2:#B7C0BB; --ink-3:#8A9490;
+      --line:#2A322F; --line-2:#232A27;
+      --brand:#5FBFA3; --brand-deep:#8FD8C1; --brand-soft:#1D2C27;
+      --ok:#6FD1A3; --ok-bg:#16281F;
+      --mid:#E0B25F; --mid-bg:#2A2314;
+      --no:#EE8C7F; --no-bg:#2C1B18;
+      --warn:#E89A63; --warn-bg:#2B1E14;
+      --shadow:0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:15px/1.72 -apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",system-ui,sans-serif;
+    letter-spacing:.005em;
+  }
+  .wrap{max-width:1080px;margin:0 auto;padding:0 20px 96px}
+
+  /* ── Header ── */
+  header{
+    background:linear-gradient(160deg,var(--brand-deep) 0%,var(--brand) 100%);
+    color:#F2FBF7; padding:52px 20px 44px; margin-bottom:34px;
+  }
+  @media (prefers-color-scheme: dark){
+    header{background:linear-gradient(160deg,#12211C 0%,#1B3A31 100%); color:#E9EEEB; border-bottom:1px solid var(--line)}
+  }
+  header .inner{max-width:1080px;margin:0 auto}
+  .kicker{font-size:12px;letter-spacing:.16em;text-transform:uppercase;opacity:.72;margin:0 0 12px}
+  h1{margin:0;font-size:30px;line-height:1.32;font-weight:700;letter-spacing:-.01em}
+  header p.sub{margin:14px 0 0;font-size:14.5px;opacity:.85;max-width:760px}
+  .meta{margin-top:20px;display:flex;flex-wrap:wrap;gap:8px}
+  .meta span{
+    font-size:12px;padding:4px 10px;border-radius:999px;
+    background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22)
+  }
+
+  /* ── Sections ── */
+  section{margin:0 0 34px}
+  h2{
+    font-size:20px;margin:0 0 14px;padding-bottom:10px;
+    border-bottom:2px solid var(--brand-soft); font-weight:700; letter-spacing:-.005em;
+  }
+  h2 .n{color:var(--brand);font-weight:800;margin-right:8px}
+  h3{font-size:16px;margin:26px 0 10px;font-weight:650}
+  h3 .tag{font-size:11px;font-weight:600;padding:2px 8px;border-radius:6px;margin-left:8px;vertical-align:2px}
+  p{margin:0 0 12px;color:var(--ink-2)}
+  ul,ol{margin:0 0 12px;padding-left:22px;color:var(--ink-2)}
+  li{margin:5px 0}
+  strong{color:var(--ink);font-weight:650}
+  code{
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;
+    background:var(--line-2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;color:var(--ink)
+  }
+
+  /* ── Cards ── */
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 22px;box-shadow:var(--shadow);margin:0 0 18px}
+  .card.tight{padding:16px 18px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media (max-width:820px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+  /* ── Verdict cards ── */
+  .verdict{border-left:4px solid var(--brand);background:var(--card);border-radius:12px;padding:14px 18px;box-shadow:var(--shadow)}
+  .verdict .lab{font-size:11.5px;font-weight:700;letter-spacing:.08em;color:var(--brand);margin-bottom:4px}
+  .verdict .txt{font-size:14.5px;color:var(--ink);margin:0}
+
+  /* ── Tables ── */
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:var(--shadow);margin:0 0 18px}
+  table{border-collapse:collapse;width:100%;min-width:640px;font-size:13.5px}
+  th,td{padding:10px 12px;text-align:left;border-bottom:1px solid var(--line-2);vertical-align:top}
+  thead th{background:var(--brand-soft);color:var(--brand-deep);font-weight:650;font-size:12.5px;white-space:nowrap;position:sticky;top:0}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:hover{background:var(--line-2)}
+  td.c,th.c{text-align:center}
+  .me{background:var(--brand-soft)}
+  .me td{font-weight:600}
+  th.me{color:var(--brand-deep)}
+
+  /* ── Badges ── */
+  .b{display:inline-block;font-size:11.5px;font-weight:650;padding:2px 7px;border-radius:6px;white-space:nowrap;line-height:1.6}
+  .b-ok{color:var(--ok);background:var(--ok-bg);border:1px solid var(--ok)}
+  .b-mid{color:var(--mid);background:var(--mid-bg);border:1px solid var(--mid)}
+  .b-no{color:var(--no);background:var(--no-bg);border:1px solid var(--no)}
+  .dot{display:inline-block;width:18px;text-align:center;font-weight:800}
+  .dot-ok{color:var(--ok)} .dot-mid{color:var(--mid)} .dot-no{color:var(--no)}
+
+  /* ── Pills ── */
+  .pill{display:inline-block;font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;margin-right:6px}
+  .p0{color:#fff;background:#B3392F}
+  .p1{color:#fff;background:#B07C14}
+  .p2{color:#fff;background:#3E6B8C}
+  @media (prefers-color-scheme: dark){.p0{background:#C05046}.p1{background:#9A7A2E}.p2{background:#4A7A9E}}
+
+  /* ── Bars ── */
+  .bar{height:9px;border-radius:999px;background:var(--line-2);overflow:hidden;margin-top:7px}
+  .bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--brand),var(--brand-deep))}
+  .score{display:flex;align-items:baseline;gap:8px}
+  .score b{font-size:22px;font-weight:750;color:var(--brand-deep)}
+  .score small{color:var(--ink-3);font-size:12px}
+
+  /* ── Callout ── */
+  .note{border:1px dashed var(--line);border-radius:12px;padding:14px 18px;background:var(--card);color:var(--ink-2);font-size:13.5px}
+  .warnbox{border-left:4px solid var(--warn);background:var(--warn-bg);border-radius:10px;padding:13px 17px;font-size:13.5px;color:var(--ink)}
+  .warnbox b{color:var(--warn)}
+
+  hr{border:none;border-top:1px solid var(--line);margin:30px 0}
+  footer{color:var(--ink-3);font-size:12.5px;border-top:1px solid var(--line);padding-top:18px;margin-top:40px}
+  .kv{display:flex;gap:10px;font-size:13px;padding:5px 0;border-bottom:1px solid var(--line-2)}
+  .kv:last-child{border-bottom:none}
+  .kv b{min-width:78px;color:var(--ink-3);font-weight:600}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="inner">
+    <p class="kicker">Competitive Analysis · 内部参考</p>
+    <h1>「生活记忆 life」竞品调研报告</h1>
+    <p class="sub">对标 钱迹 / 鲨鱼记账 / 喵喵记账 / 小日常 / 滴答清单 / 番茄 ToDo —— 逐模块比出「我们哪里更弱、哪里缺、哪里更好用」。</p>
+    <div class="meta">
+      <span>调研日期 2026-09-29</span>
+      <span>我方版本 v2.10</span>
+      <span>对标样本 6 款</span>
+      <span>证据来源：官网 / 百科 / 第三方横评 / 商店页 / 自有代码</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ═══════════ 摘要 ═══════════ -->
+<section>
+  <h2><span class="n">0</span>摘要：结论先行</h2>
+
+  <div class="grid g2" style="margin-bottom:18px">
+    <div class="verdict"><div class="lab">总体判断</div><p class="txt">我们不是任何一个竞品的同类。竞品是<strong>垂直单点冠军</strong>，我们是<strong>一体化聚合器</strong>。<br>所以正确的问题不是「谁功能多」，而是「单点深度差多少、聚合价值值不值」。</p></div>
+    <div class="verdict" style="border-left-color:var(--no)"><div class="lab" style="color:var(--no)">最大风险</div><p class="txt">在每一个垂直维度上，我们都<strong>不是最好的那个</strong>：记账不如钱迹、打卡不如小日常、待办不如滴答清单、专注为零。<br>用户没有任何「非你不可」的理由——一体化只有在<strong>跨模块联动</strong>真做出价值时才是优势。</p></div>
+    <div class="verdict" style="border-left-color:var(--mid)"><div class="lab" style="color:var(--mid)">最大缺口（P0）</div><p class="txt"><strong>提醒/推送能力几乎为零</strong>——只有「未来单次带时间的日程」能发一条订阅消息。竞品的留存引擎（打卡提醒、记账提醒、还款提醒、常驻提醒）我们全没有。</p></div>
+    <div class="verdict" style="border-left-color:var(--ok)"><div class="lab" style="color:var(--ok)">最大优势</div><p class="txt"><strong>跨模块的「今日 + 月报 + 统一搜索」闭环</strong>，以及<strong>真正数据自主</strong>（自建后端、全量导出、无广告、AI 默认关闭）。这 6 款里没有任何一款把「财务 + 习惯 + 生活」合成一页。</p></div>
+  </div>
+
+  <h3>三条核心判断</h3>
+  <ol>
+    <li><strong>深度输、广度赢，但广度尚未变现。</strong>六大模块（记账 / 习惯 / 日程 / 随记 / 待买 / 书影音 / 健身）单看都只是竞品的 40–70% 完成度；但「今日页把日程+习惯+待买合成统一待处理」「月报把收支+习惯达标率+体重+书影音+心情合成一页」是竞品没有的结构。这张牌目前只做了一半——<strong>联动只做到了「聚合展示」，还没做到「互相驱动」</strong>（例如：记账超支 → 自动收紧待买清单预算；习惯连续中断 → 日程自动降级）。</li>
+    <li><strong>「数据自主」是我们唯一不打折的差异化，但兑现不完整。</strong>自建后端 + 写队列 + 墓碑同步 + 全量 JSON 导出 + 无广告无社区，客观上比鲨鱼/喵喵（广告+导流+投诉）干净得多。但<strong>导出只有 JSON、没有导入</strong>——用户拿不走也搬不回，承诺断了一半。钱迹已做到「支持几乎所有主流记账软件导入」。</li>
+    <li><strong>微信小程序这个载体，同时是最大优势和最大天花板。</strong>优势：零安装、即用即走、12 页转发/朋友圈，对小红书冷启动引流是天然通路，获客成本远低于要求下载 App 的竞品。天花板：<strong>桌面小组件、自动记账（读系统通知）、学霸模式锁机、Apple Health/iCloud、后台常驻提醒——这五项在小程序架构里都做不了</strong>，而它们恰好是钱迹（自动记账）、番茄 ToDo（锁机）、小日常（小组件）的核心卖点。</li>
+  </ol>
+</section>
+
+<!-- ═══════════ 1 竞品概览 ═══════════ -->
+<section>
+  <h2><span class="n">1</span>竞品概览：六个不同赛道</h2>
+  <p>先明确一件事：这 6 款产品分属 4 个赛道，功能重叠度并不高。我们真正与之交锋的是「记账」和「习惯」两条线；滴答清单、番茄 ToDo 属于能力借鉴对象，不是同类竞品。</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th>产品</th><th>赛道</th><th>一句话定位</th><th>平台</th><th>规模（公开口径）</th><th>商业模式 / 价格</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>钱迹</strong></td><td><span class="b b-ok">直接竞品</span></td>
+        <td>「三无」纯记账：无广告、无开屏、无理财</td>
+        <td>iOS/Android/Windows/Mac/鸿蒙/网页等 <strong>9 端</strong></td>
+        <td>600 万+ 用户 / 3000 万+ 下载</td>
+        <td>无广告 + 会员：<strong>6 元/月 · 36 元/年 · 128 元终身</strong></td>
+      </tr>
+      <tr>
+        <td><strong>鲨鱼记账</strong></td><td><span class="b b-ok">直接竞品</span></td>
+        <td>3 秒极速记账，第二梯队头部</td>
+        <td>iOS/Android</td>
+        <td>注册 3100 万+ / 月活 600 万+</td>
+        <td>免费 + 广告 + 会员（约 <strong>99 元/年、18 元/月</strong>）+ 理财课/券商导流</td>
+      </tr>
+      <tr>
+        <td><strong>喵喵记账</strong></td><td><span class="b b-ok">直接竞品</span></td>
+        <td>养猫收集型游戏化记账</td>
+        <td>iOS/Android</td>
+        <td>应用宝 35.7 万下载；iOS 约 62 万条评分</td>
+        <td>免费+广告+<strong>VIP 18/月·98/年·买断 30</strong>；SVIP 28/月·148/年·买断 88</td>
+      </tr>
+      <tr>
+        <td><strong>小日常</strong></td><td><span class="b b-ok">直接竞品</span></td>
+        <td>极简小清新习惯打卡 + 待办 + 番茄钟</td>
+        <td>iOS/Android</td>
+        <td>千万用户口径（第三方）</td>
+        <td>核心打卡<strong>完全免费</strong>；付费主题/高级统计，约 12 元/月</td>
+      </tr>
+      <tr>
+        <td><strong>滴答清单</strong></td><td><span class="b b-mid">能力标杆</span></td>
+        <td>全平台任务 + 日历 + 习惯 + 番茄的 all-in-one</td>
+        <td>手机/平板/电脑/手表/网页</td>
+        <td>全球数百万用户</td>
+        <td>免费版（限 9 清单，<strong>无日历视图</strong>）+ Premium <strong>$3.99/月 或 $35.99/年</strong></td>
+      </tr>
+      <tr>
+        <td><strong>番茄 ToDo</strong></td><td><span class="b b-mid">能力标杆</span></td>
+        <td>番茄钟 + 学霸模式锁机，学生党国民级自律 App</td>
+        <td>iOS/Android</td>
+        <td>1250 万+ 下载，4.9 分（约 96 万评分）</td>
+        <td>免费（较完整）+ 会员（季卡/年卡，解锁海报等）</td>
+      </tr>
+      <tr class="me">
+        <td><strong>生活记忆 life</strong></td><td><span class="b b-mid">本产品</span></td>
+        <td>一体化生活管理：记账+习惯+日程+随记+待买+书影音+健身+报告</td>
+        <td>微信小程序（单一端）</td>
+        <td>未上线</td>
+        <td>暂无商业化；自建后端，无广告</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ═══════════ 2 能力矩阵 ═══════════ -->
+<section>
+  <h2><span class="n">2</span>能力对比矩阵</h2>
+  <p>图例：<span class="dot dot-ok">✔</span> 具备且完整　<span class="dot dot-mid">◐</span> 部分具备 / 需付费 / 受限　<span class="dot dot-no">✘</span> 不具备。<strong>「本产品」列已用代码核对</strong>（<code>docs/FEATURES.md</code> + <code>miniprogram/utils/finance.js</code> + <code>app.json</code>），非竞品列基于公开资料的能力存在性判断。</p>
+
+  <h3>2.1 记账 / 财务</h3>
+  <div class="tw">
+  <table>
+    <thead><tr><th>能力项</th><th class="c me">生活记忆</th><th class="c">钱迹</th><th class="c">鲨鱼记账</th><th class="c">喵喵记账</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>手动收支 / 转账</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td>平手</td></tr>
+      <tr><td>资产 / 负债账户 + 余额推导</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>我们「期初+流水+校准」推导，机制不弱</td></tr>
+      <tr><td>预算（月 + 分类）</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td>钱迹做到年+月+日均动态更新</td></tr>
+      <tr><td>自定义分类（增删/排序/图标/二级）</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td><strong>我们固定 28 支出 + 11 收入，不可改</strong></td></tr>
+      <tr><td>账单导入（微信/支付宝/他款 App）</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>钱迹「几乎支持所有主流记账软件」</td></tr>
+      <tr><td>导出为 Excel / CSV</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td><strong>我们只有 JSON</strong>，且无导入回灌</td></tr>
+      <tr><td>自动记账 / 语音 / OCR</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td>钱迹 4.4 已上 AI 智能匹配自动记账</td></tr>
+      <tr><td>多账本 / 共享账本</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>钱迹/鲨鱼此项均需会员</td></tr>
+      <tr><td>多币种</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td>钱迹独有</td></tr>
+      <tr><td>分期 / 债务 / 报销 / 手续费</td><td class="c me"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-no">✘</span></td><td>我们只有负债账户 + 还款到期提示</td></tr>
+      <tr><td>存钱目标（365 / 52 周法）</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>钱迹的仪式感设计，粘性很强</td></tr>
+      <tr><td>日历视图（收支日历）</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>鲨鱼/喵喵此项需付费</td></tr>
+      <tr><td>报表分析</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>我们月报+趋势；钱迹有饼/柱/折+自定义区间</td></tr>
+      <tr><td>密码 / 手势锁</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>记账 App 的默认配置，我们缺</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>2.2 习惯 / 打卡</h3>
+  <div class="tw">
+  <table>
+    <thead><tr><th>能力项</th><th class="c me">生活记忆</th><th class="c">小日常</th><th class="c">滴答清单</th><th class="c">番茄 ToDo</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>多模式打卡（勾选/计数/数值）</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td><strong>我们的三模式比小日常更细</strong></td></tr>
+      <tr><td>连续天数 / 完成率</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td>平手</td></tr>
+      <tr><td>补卡 / 修改历史</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>小日常支持长按补卡</td></tr>
+      <tr><td>热力图 / 日历视图</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td><strong>我们零可视化历史</strong></td></tr>
+      <tr><td>成就 / 徽章 / 收集激励</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td>小日常「全部完成解锁卡片」是核心情绪设计</td></tr>
+      <tr><td>提醒 / 通知</td><td class="c me"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td><strong>我们仅日程单次订阅消息</strong>，习惯无提醒</td></tr>
+      <tr><td>微习惯拆解 / AI 教练</td><td class="c me"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td>我们 AI 只做轻提醒文案，不做行为拆解</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>2.3 日程 / 待办</h3>
+  <div class="tw">
+  <table>
+    <thead><tr><th>能力项</th><th class="c me">生活记忆</th><th class="c">滴答清单</th><th class="c">小日常</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>周视图</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>我们周日历做得干净，是加分项</td></tr>
+      <tr><td>月 / 年 / 议程 / 看板 / 时间线视图</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td>滴答 6 种视图 + 艾森豪威尔矩阵</td></tr>
+      <tr><td>重复规则</td><td class="c me"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td><strong>我们只有 单次/每天/每周</strong>；无月/年/自定义</td></tr>
+      <tr><td>单日完成 / 跳过覆盖</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td>我们「不复制记录 + 虚拟展开」实现得干净</td></tr>
+      <tr><td>子任务 / 优先级 / 标签 / 过滤器</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td>我们日程只有 title/date/time/done</td></tr>
+      <tr><td>多提醒 / 常驻提醒 / NLP 自然语言</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td>滴答单任务最多 5 提醒；番茄 ToDo 常驻提醒</td></tr>
+      <tr><td>协作 / 共享清单</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td>滴答可指派 + 评论 + 权限</td></tr>
+      <tr><td>倒数日</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td>纪念日/考试/项目截止</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>2.4 专注 / 番茄 · 记录 · 数据 · 体验</h3>
+  <div class="tw">
+  <table>
+    <thead><tr><th>能力项</th><th class="c me">生活记忆</th><th class="c">钱迹</th><th class="c">鲨鱼</th><th class="c">喵喵</th><th class="c">小日常</th><th class="c">滴答</th><th class="c">番茄</th></tr></thead>
+    <tbody>
+      <tr><td>番茄钟 / 专注计时</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td></tr>
+      <tr><td>锁机 / 学霸模式</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td></tr>
+      <tr><td>白噪音 / 自习室</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td></tr>
+      <tr><td>纯文字随记 + 心情 + 标签</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-no">✘</span></td></tr>
+      <tr><td>书影音收藏</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td></tr>
+      <tr><td>体重 / BMI / 热量</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td></tr>
+      <tr><td>跨模块统一搜索</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td></tr>
+      <tr><td>跨模块月报 / 周复盘</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td></tr>
+      <tr><td>实时推送同步（WS）</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td></tr>
+      <tr><td>全量导出（免费）</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td></tr>
+      <tr><td>导入 / 恢复</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td></tr>
+      <tr><td>无广告</td><td class="c me"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td></tr>
+      <tr><td>深色模式</td><td class="c me"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td></tr>
+      <tr><td>多主题</td><td class="c me"><span class="dot dot-ok">✔</span><small>4 套</small></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span><small>40+</small></td><td class="c"><span class="dot dot-ok">✔</span></td></tr>
+      <tr><td>桌面 / 锁屏小组件</td><td class="c me"><span class="dot dot-no">✘</span><small>小程序不可</small></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td></tr>
+      <tr><td>多平台客户端</td><td class="c me"><span class="dot dot-no">✘</span><small>仅小程序</small></td><td class="c"><span class="dot dot-ok">✔</span><small>9 端</small></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-mid">◐</span></td><td class="c"><span class="dot dot-ok">✔</span></td><td class="c"><span class="dot dot-mid">◐</span></td></tr>
+      <tr><td>AI 能力</td><td class="c me"><span class="dot dot-ok">✔</span><small>轻提醒/月报</small></td><td class="c"><span class="dot dot-ok">✔</span><small>自动记账</small></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-no">✘</span></td><td class="c"><span class="dot dot-ok">✔</span><small>习惯教练</small></td><td class="c"><span class="dot dot-ok">✔</span><small>语音/摘要</small></td><td class="c"><span class="dot dot-no">✘</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ═══════════ 3 不足 ═══════════ -->
+<section>
+  <h2><span class="n">3</span>不足：做了，但明显不如竞品</h2>
+  <p>这一节只列「同一件事我们做了、但做得更弱」的项，按对我们的杀伤力排序。</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th style="width:52px">优先级</th><th style="width:170px">不足项</th><th>我们的现状</th><th>竞品做到什么程度</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td><strong>提醒 / 推送几乎为零</strong></td>
+        <td>只有「未来 + 带具体时间 + 一次性」的日程能申请一条订阅消息（<code>plan</code> 集合）；习惯打卡、每日重复日程、待买、账单还款到期<strong>全部无推送</strong>。</td>
+        <td>小日常柔性提醒（不弹红点、次日温和提醒）；滴答清单单任务最多 5 个提醒 + 常驻提醒（不完成一直响）；番茄 ToDo 常驻提醒 + 定时锁机；鲨鱼默认每天 19:00 记账提醒。</td>
+      </tr>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td><strong>分类固定，决策成本反而更高</strong></td>
+        <td><code>finance.js</code> 里写死 <strong>28 个支出分类 + 11 个收入分类</strong>，用户不能增删、排序、换图标，无二级分类。想改分类要改代码 + 提审。</td>
+        <td>钱迹支持自定义一二级分类名称与排序、自定义图标、自定义月起止日；鲨鱼/喵喵至少可自定义部分图标。</td>
+      </tr>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td><strong>数据「带得走」但「带不回」</strong></td>
+        <td>导出：JSON 到剪贴板 + 云端全量 JSON。<strong>没有 Excel/CSV，也没有任何导入入口</strong>——用户换机或误删后无法回灌。</td>
+        <td>钱迹：免费导出 + 支持几乎所有主流记账软件账单导入；鲨鱼：导出 Excel；小日常：CSV 导出 + 导入恢复。</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td><strong>习惯只有打卡，没有「历史」</strong></td>
+        <td>有连续天数徽章 + 进度条，但<strong>没有日历热力图、没有补卡、没有任何成就/徽章体系</strong>，坚持感完全靠数字。</td>
+        <td>小日常：日历热力图 + 长按补卡 + 「全部完成解锁成就卡片、卡片背面写感想」的收集式情绪设计；番茄 ToDo：专注热力图 + 海报 + 自习室排行。</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td><strong>重复规则粒度太粗</strong></td>
+        <td>只有 单次 / 每天 / 每周 三种，每周锚定开始日的星期。<strong>没有「每月 15 号」「每两周」「工作日」「自定义间隔」</strong>。</td>
+        <td>滴答清单支持周/月/年 + 自定义重复规则；小日常可为每个习惯指定「一周内的哪几天 + 哪个时间段」。</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td><strong>记账没有日历视图，报表形态单一</strong></td>
+        <td>月报有收支汇总 + Top3 分类 + 每日趋势；记账页是「流水 + 月度柱状」。</td>
+        <td>钱迹/鲨鱼有收支日历视图；钱迹有饼图/条形图/折线图 + 按年/月/自定义区间统计 + 单分类详统。</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td><strong>没有深色模式</strong></td>
+        <td>4 套低饱和主题（雾林/暖纸/月白/暮紫）都是浅色系；<code>FEATURES.md</code> 中深色模式仍标 🚧。</td>
+        <td>这 6 款<strong>全部</strong>支持深色/夜间模式。这项缺失在夜间使用场景里非常显眼。</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td><strong>没有应用锁</strong></td>
+        <td>无密码、无手势、无指纹（小程序也拿不到指纹）。</td>
+        <td>钱迹免费版即含密码保护；鲨鱼手势/指纹需付费但门槛很低。</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td><strong>日程能力太薄</strong></td>
+        <td>日程只有 <code>title / date / time / done / pinned</code>，无子任务、无优先级、无标签、无过滤器、无备注。</td>
+        <td>滴答清单：子任务/清单/文件夹/优先级/标签/过滤器/多提醒/NLP 自然语言输入。</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ═══════════ 4 缺失 ═══════════ -->
+<section>
+  <h2><span class="n">4</span>缺失：整个能力类别我们都没有</h2>
+  <p>这些不是「做得弱」，而是「没有」。其中标注 <code>载体受限</code> 的项，在微信小程序架构下<strong>无法实现</strong>，只能靠做 App 解决。</p>
+
+  <div class="grid g2">
+    <div class="card tight">
+      <h3 style="margin-top:0">财务侧缺失</h3>
+      <ul style="margin-bottom:0">
+        <li>账单导入（微信 / 支付宝 / 他款 App）</li>
+        <li>自动记账（读系统支付通知）</li>
+        <li>语音记账 / OCR 拍照识别小票</li>
+        <li>多账本 / 多人共享账本</li>
+        <li>多币种</li>
+        <li>分期管理 / 报销管理 / 退款 / 手续费 / 优惠券</li>
+        <li>存钱目标模板（365 存钱法 / 52 周存钱法）</li>
+        <li>收支日历视图</li>
+        <li>Excel / CSV 导出、账单导入回灌</li>
+        <li>密码 / 手势 / 指纹锁</li>
+      </ul>
+    </div>
+    <div class="card tight">
+      <h3 style="margin-top:0">专注与时间侧缺失</h3>
+      <ul style="margin-bottom:0">
+        <li><strong>番茄钟 / 专注计时</strong>（三款竞品都有）</li>
+        <li>白噪音 / 背景音</li>
+        <li>自习室 / 排行榜 / 互相监督</li>
+        <li>锁机 / 学霸模式 <span class="b b-no">载体受限</span></li>
+        <li>专注时长统计与科目分布</li>
+        <li>倒数日（纪念日 / 考试 / 截止日）</li>
+        <li>常驻提醒（不完成一直响）</li>
+        <li>日历 / 月 / 议程 / 看板 / 时间线视图</li>
+        <li>子任务 / 优先级 / 标签 / 过滤器</li>
+        <li>NLP 自然语言建任务</li>
+      </ul>
+    </div>
+    <div class="card tight">
+      <h3 style="margin-top:0">内容与激励侧缺失</h3>
+      <ul style="margin-bottom:0">
+        <li>图片 / 附件（明确不支持，是主动设计）</li>
+        <li>热力图 / 日历化历史可视化</li>
+        <li>补卡 / 历史记录编辑</li>
+        <li>成就 / 徽章 / 收集图鉴 / 游戏化激励</li>
+        <li>养成型情绪反馈（小日常的成就卡片、喵喵的猫咪）</li>
+        <li>微习惯拆解 / AI 行为教练</li>
+        <li>协作：共享清单、任务指派、评论</li>
+      </ul>
+    </div>
+    <div class="card tight">
+      <h3 style="margin-top:0">平台与生态侧缺失</h3>
+      <ul style="margin-bottom:0">
+        <li>桌面 / 锁屏小组件 <span class="b b-no">载体受限</span></li>
+        <li>多平台客户端（仅微信小程序一个端）</li>
+        <li>深色模式</li>
+        <li>写入 iOS 健康 / 系统日历</li>
+        <li>第三方日历双向同步（Google Calendar 等）</li>
+        <li>外部工具链（MCP / CLI / 自动化）</li>
+        <li>横幅统计 / 通知栏快捷记账 <span class="b b-no">载体受限</span></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="warnbox" style="margin-top:16px">
+    <b>载体天花板提示：</b>上表中标 <b>载体受限</b> 的 4 项，是小程序架构的硬限制，不是开发优先级问题。钱迹（自动记账）、番茄 ToDo（学霸模式锁机）、小日常（桌面小组件）的核心卖点都建立在「原生 App」之上。若长期只做小程序，这几张牌<strong>必须放弃或换打法</strong>（例如用「微信服务通知 + 分享卡片」替代小组件触达）。
+  </div>
+</section>
+
+<!-- ═══════════ 5 优势 ═══════════ -->
+<section>
+  <h2><span class="n">5</span>优势：我们确实更好用的地方</h2>
+  <p>这一节是本次调研里最该被认真对待的部分——因为它决定了差异化该往哪押。</p>
+
+  <div class="card">
+    <h3 style="margin-top:0">① 跨模块聚合：今日页 + 月报 + 统一搜索 <span class="b b-ok">6 款竞品都没有</span></h3>
+    <p>「今日概览」把<strong>日程 + 习惯 + 待买</strong>合并成一张「统一待处理」清单，可快速完成与置顶，日程逾期有明确标识；「月报」把<strong>收支 + 预算 + 习惯达标率 + 日程完成率 + 体重变化 + 书影音 + 随记次数/天数/常用标签/心情分布</strong>合成一页；「搜索」一次覆盖随记、日程、待买、书影音、账本五个集合。</p>
+    <p style="margin-bottom:0">对照：滴答清单的「今日」只含任务与习惯，不含财务；钱迹的年度报告只含财务；小日常只有习惯与待办。没有任何一款做到了<strong>「钱 + 习惯 + 生活」同框</strong>。这是我们的结构优势，目前只发挥了一半。</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">② 真正数据自主 + 隐私边界干净 <span class="b b-ok">强于鲨鱼 / 喵喵</span></h3>
+    <ul>
+      <li><strong>自建后端</strong>（Express + MySQL + WS），数据不在第三方 SaaS 上；<code>LWW</code> 冲突策略 + 软删墓碑 + 增量 <code>GET /api/sync?since=</code>，同步协议可给未来网页版复用。</li>
+      <li><strong>明确不接收图片 / 音频 / 文件，不接入任何第三方金融数据</strong>——这是主动的隐私设计，不是能力欠缺。</li>
+      <li><strong>AI 默认关闭</strong>，只有用户主动开启后才由服务端发送<strong>裁剪后的摘要</strong>；关闭即停止第三方调用并清除缓存文案；密钥不进代码、服务端密文存储。</li>
+      <li><strong>无广告、无开屏、无社区、无理财导流</strong>——与钱迹的「三无」同档，明显优于鲨鱼（开屏广告 + 理财课/券商导流）与喵喵（广告关闭按钮隐蔽、需「后台深度应用权限」引发隐私投诉、黑猫投诉 973 条）。</li>
+      <li><strong>分享卡片隐私化</strong>：12 个页面支持转发/朋友圈，但卡片只用固定中性文案、显式指定包内 logo，<strong>不会把记账页/时间线截图带出</strong>——竞品普遍用页面截图当分享卡，这在记账场景是真实泄露风险。</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">③ 离线韧性与写队列的工程完成度</h3>
+    <p>先渲染后拉（杜绝白屏）、乐观更新立即生效、失败进队列 15 秒自动重试、被服务端 4xx 明确拒绝时<strong>丢弃队首并记入可见状态</strong>（「我的 → 数据状态」展示原因 + 手动重试，而不是无限重试刷屏）、WebSocket 推送 + 断线指数退避 + 60 秒兜底轮询、本地缓存 1MB 上限前的无损瘦身与「重建本机缓存」自救。</p>
+    <p style="margin-bottom:0">这套东西在竞品里<strong>属于看不见的部分</strong>，但直接决定「弱网/离线时会不会丢数据、会不会骗用户」。轻量记账 App 常见的「网络差时启动极慢、记账卡住」（横评中挖财、有鱼记账都被点名）我们不会有。</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">④ 生活化中文分类，比通用分类更贴地</h3>
+    <p style="margin-bottom:0">支出 28 项里包含 <code>买菜</code>、<code>水果零食</code>、<code>打车出行</code>、<code>房租房贷</code>、<code>订阅会员</code>、<code>银行手续费</code>、<code>公益捐赠</code>、<code>家庭育儿</code> 等中国生活场景分类；账户预设直接给了<strong>花呗 / 美团月付 / 抖音月付 / 京东白条</strong>——这些是「中国年轻人的真实负债结构」，比通用「信用卡」一项更可用。（注：固定不可改是缺点，见 §3，但<strong>分类本身的设计质量</strong>是加分项。）</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">⑤ 健康量化闭环 + 双周/月复盘，竞品空白区</h3>
+    <p style="margin-bottom:0">体重/体脂记录 + canvas 手绘折线（7 日/30 日 + 7 日均线）+ BMI 区间着色 + 目标进度 + 热量缺口 + 自定义周健身计划，再叠上月报里的「月内体重变化」。记账类竞品完全不做健康，待办类竞品只做专注时长。<strong>「记账 + 健身 + 体重」同 App 是空白位</strong>——恰好对口饼师傅自己的减脂增肌计划。</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">⑥ 零安装 + 微信生态分发</h3>
+    <p style="margin-bottom:0">竞品全部要求下载 App（几十 MB、注册账号、看开屏广告）。我们「点开即用」+ 12 页转发/朋友圈，<strong>获客成本结构性更低</strong>——对小红色起号阶段是最实用的分发杠杆。代价是牺牲了小组件、自动记账、锁机、健康数据写入（见 §4 载体天花板）。</p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">⑦ 主题随账号同步 <span class="b b-mid">细节优势</span></h3>
+    <p style="margin-bottom:0">4 套低饱和主题（雾林/暖纸/月白/暮紫）随 <code>settings</code> 记录<strong>跨设备同步</strong>，页面、主按钮、资料首屏、底部导航与系统导航栏即时联动。多数 App 的主题只是本机偏好，换设备会丢。</p>
+  </div>
+</section>
+
+<!-- ═══════════ 6 建议 ═══════════ -->
+<section>
+  <h2><span class="n">6</span>改进建议（按性价比排序）</h2>
+  <p>以下为<strong>建议</strong>，非结论。判断依据：能不能补上「留存引擎」、能不能兑现「数据自主」承诺、成本是否可控。</p>
+
+  <div class="tw">
+  <table>
+    <thead><tr><th style="width:52px">优先级</th><th style="width:190px">建议动作</th><th>为什么做</th><th style="width:150px">成本 / 依赖</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td><strong>补齐提醒矩阵</strong>：习惯打卡提醒、每日日程提醒、账单还款提醒、待买提醒</td>
+        <td>我们唯一可用的推送通道是微信订阅消息，而订阅消息是<strong>一次性</strong>授权，需要「一次订阅 → 多次触达」的额度管理设计。这是留存的第一杠杆：竞品的提醒正是让用户「还记得打开」的机制。当前「习惯」完全没有提醒，等于把连续天数交给用户记忆。</td>
+        <td>服务端加定时任务 + 订阅消息发送；前端补订阅引导与额度提示。中等</td>
+      </tr>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td><strong>导出 Excel/CSV + 增加导入入口</strong>（至少支持自家 JSON 回灌 + CSV）</td>
+        <td>「数据自主」是我们的核心差异，但「能导出不能导入」是半成品。用户对记账 App 的硬需求包含「导出表格自己分析」与「换机不丢数据」。补齐后可以把这句承诺写进宣传语。</td>
+        <td>前端导出/解析 + 服务端批量 upsert 接口。低～中</td>
+      </tr>
+      <tr>
+        <td><span class="pill p0">P0</span></td>
+        <td><strong>分类可自定义</strong>（增删/排序/图标，二级分类可选）</td>
+        <td>28 项固定分类是双刃：设计质量高，但「每笔都要在 28 项里选」正是横评里 62% 用户放弃记账的原因（决策疲劳）。允许用户把常用分类提到前面、隐藏用不到的，<strong>比继续加分类更能提升坚持率</strong>。</td>
+        <td>新增分类集合 + 排序字段 + 设置页管理。中等</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td><strong>习惯补卡 + 热力图 + 徽章体系</strong></td>
+        <td>直接对标小日常的强项，且是纯前端 + 少量数据的低成本项。热力图让「坚持」可见，补卡消除「断一次就放弃」的全有全无效应（研究显示断掉 100 天打卡的人会把中断体验为「真正的失去」）。</td>
+        <td>低。可在一次迭代内完成</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td><strong>番茄钟 / 专注计时，绑定日程与习惯</strong></td>
+        <td>补上「日程 → 专注 → 习惯」的闭环，这是滴答/番茄 ToDo/小日常三款都有的能力，而我们完全空白。小程序内可实现（页面内计时 + 记录专注时长），锁机做不了但可以不做。专注时长还能进月报，强化跨模块联动。</td>
+        <td>中。注意小程序后台运行限制</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td><strong>深色模式</strong></td>
+        <td>6 款竞品全部支持。现有 CSS 变量体系可平滑迁移，投入产出比很高，且影响「夜间记账/睡前打卡」这一高频时段的第一印象。</td>
+        <td>低。<code>app.json</code> darkmode + theme.json</td>
+      </tr>
+      <tr>
+        <td><span class="pill p1">P1</span></td>
+        <td><strong>记账日历视图 + 报表形态丰富</strong></td>
+        <td>补上与钱迹/鲨鱼的视觉差距。日历视图是记账 App 的「回顾入口」，比多一张饼图更有用。</td>
+        <td>低～中</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td><strong>把「聚合」升级为「联动」</strong></td>
+        <td>这是把一体化从「列表堆在一起」变成「互相驱动」的关键：预算超支 → 待买清单首页提示降级；习惯连续 3 天未达标 → 日程自动建议降低目标；体重连续上升 → 热量缺口卡前置。竞品结构上做不到，只有我们能做到——<strong>这才是真正的护城河</strong>。</td>
+        <td>中～高。需要产品设计而非堆功能</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td><strong>应用锁（页面内口令）</strong></td>
+        <td>小程序拿不到指纹，但可以做「进入需输入 4 位口令」的软锁。对记账隐私敏感用户有实际价值。</td>
+        <td>低</td>
+      </tr>
+      <tr>
+        <td><span class="pill p2">P2</span></td>
+        <td><strong>战略层：是否补一个原生壳</strong></td>
+        <td>若长期要做「小组件 / 自动记账 / 锁机 / 健康数据写入」，必须做 App（或用 uni-app / RN 多端）。建议先靠小程序验证留存，再决定是否投入原生。</td>
+        <td>高。属于路线决策，非功能</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="note">
+    <strong>不建议做的：</strong>① 不要跟钱迹比记账深度（对方 600 万用户、9 端、8 年迭代，正面拼必输）；② 不要跟喵喵比游戏化（其商业化争议大、黑猫投诉 973 条，路径不健康）；③ 不要为了「功能多」而加协作/社区——我们的隐私干净是无广告定位的一部分，加社交会稀释它。
+  </div>
+</section>
+
+<!-- ═══════════ 7 免责 ═══════════ -->
+<section>
+  <h2><span class="n">7</span>方法与局限</h2>
+  <div class="card tight">
+    <div class="kv"><b>调研口径</b><span>横向能力盘点 + 单点深度对比。只判断「能力是否存在」，不评估实现质量与真实体验。</span></div>
+    <div class="kv"><b>自家数据</b><span>以代码为准并已核对：<code>docs/FEATURES.md</code>、<code>miniprogram/app.json</code>、<code>miniprogram/utils/finance.js</code>（分类与金额口径）、页面清单（14 个）、数据集合（9 个）。</span></div>
+    <div class="kv"><b>竞品数据</b><span>官网（qianjiapp.com、shayujizhang.com、ticktick.com）、百度百科词条、少数派《16 款安卓个人记账 APP 大横评》、各商店页与第三方横评。检索时间 2026-09-29。</span></div>
+    <div class="kv"><b>验证状态</b><span><span class="b b-no">NOT_RUN</span> 未安装竞品逐项真机走查；矩阵中的 ✔/◐/✘ 为<strong>公开资料的能力存在性判断</strong>，不代表实际体验优于/劣于我方。会员权益与价格会变动，以 App 内当前页面为准。</span></div>
+    <div class="kv"><b>已知偏差</b><span>规模数据来自厂商公开口径与第三方估算，口径不统一（用户数 / 下载量 / 月活混用），仅用于量级参照，不可直接比较。</span></div>
+    <div class="kv"><b>区分标注</b><span>本报告已区分：<strong>事实</strong>（代码/官网可查）、<strong>分析</strong>（对比结论）、<strong>建议</strong>（§6 优先级）。§6 全部为建议。</span></div>
+  </div>
+</section>
+
+<footer>
+  生活记忆 life · 竞品调研报告　|　生成于 2026-09-29　|　对标：钱迹、鲨鱼记账、喵喵记账、小日常、滴答清单、番茄 ToDo<br>
+  本报告为内部参考材料，结论需结合真机走查与实际用户反馈复核后使用。
+</footer>
+
+</div>
+</body>
+</html>
