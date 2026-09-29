@@ -1,4 +1,5 @@
 const { addDays, derivePlanOccurrences, makeOccurrenceId, valuesOfRecords } = require('./plan-utils');
+const { isEntryDone, entryTarget } = require('./habit-utils');
 
 function todayHabitItems(records, date) {
   const definitions = {};
@@ -13,7 +14,7 @@ function todayHabitItems(records, date) {
     const data = record.data;
     const entry = entries[id];
     const value = Number(entry && entry.data.value) || 0;
-    const target = Number(data.target) || 1;
+    const target = entryTarget(entry, record);
     return {
       id,
       kind: 'habit',
@@ -21,7 +22,7 @@ function todayHabitItems(records, date) {
       title: String(data.name || ''),
       subtitle: data.mode === 'check' ? (value >= 1 ? '已完成' : '轻触打卡') : value + ' / ' + target + (data.unit ? ' ' + data.unit : ''),
       mode: data.mode || 'check',
-      done: data.mode === 'check' ? value >= 1 : value >= target,
+      done: isEntryDone(entry, record),
       pinned: Boolean(data.pinned),
       overdue: false,
       value,

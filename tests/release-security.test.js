@@ -41,7 +41,14 @@ assert.match(caddyfile, /handle \/ws/, 'HTTPS 代理必须覆盖 WebSocket 路�
 assert.ok(fs.existsSync(path.join(root, 'docs/PRIVACY.md')), '必须提供可配置到微信后台的隐私指引');
 assert.ok(fs.existsSync(path.join(root, 'docs/USER_AGREEMENT.md')), '必须提供用户协议模板');
 assert.match(legal, /个性化 AI/, '小程序内必须说明可选 AI 的数据边界');
-assert.match(mine, /隐私政策与数据说明/, '用户必须可从我的页进入隐私说明');
+/*
+ * 「我的」页的合规入口。2026-09-24 做过信息架构收纳：原先三份法律文档各占一行，
+ * 现合并为一行「隐私与合规」→ pages/legal/legal（该页自带三个 tab）。
+ * 这里钉的是「意图」而不是措辞：必须仍能从「我的」页一步进入隐私政策，且入口文案要写明包含隐私政策。
+ */
+assert.match(mine, /bindtap="goLegal"[^>]*data-doc="privacy"/, '用户必须可从我的页一步进入隐私政策');
+assert.match(mine, /隐私政策/, '「我的」页的合规入口必须标明包含隐私政策');
+assert.ok(!/data-doc="service"/.test(mine) && !/data-doc="sharing"/.test(mine), '服务协议与第三方说明应合并进「隐私与合规」入口，不再各占一行');
 
 assert.throws(() => validateStartupConfig({ devMode: false, wxAppId: '', wxSecret: '', wxReminderTemplateId: '' }), /Production configuration missing/);
 assert.doesNotThrow(() => validateStartupConfig({ devMode: false, wxAppId: 'app', wxSecret: 'secret', wxReminderTemplateId: 'template' }));

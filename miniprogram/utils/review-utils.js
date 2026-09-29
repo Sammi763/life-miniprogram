@@ -1,5 +1,6 @@
 const { addDays, derivePlanOccurrences, valuesOfRecords } = require('./plan-utils');
 const { buildMemorySummary } = require('./memory-utils');
+const { isEntryDone } = require('./habit-utils');
 
 function oneDecimal(value) {
   return Math.round((Number(value) || 0) * 10) / 10;
@@ -33,19 +34,24 @@ function buildWeeklyReview(source, weekStart) {
   definitions.forEach((definition) => {
     for (let offset = 0; offset < 7; offset++) {
       const data = entries[definition.id + '|' + addDays(weekStart, offset)];
-      const target = Number(definition.data.target) || 1;
-      const value = Number(data && data.value) || 0;
-      if (definition.data.mode === 'check' ? value >= 1 : value >= target) habitDone++;
+      if (isEntryDone(data, definition)) habitDone++;
     }
   });
   const weights = valuesOfRecords(source && source.fitness).map((record) => record.data)
     .filter((data) => data.kind === 'weight' && data.date >= weekStart && data.date <= end && Number(data.weight) > 0)
     .sort((a, b) => a.date.localeCompare(b.date));
-  const weight = weights.length ? { start: Number(weights[0].weight), end: Number(weights[weights.length - 1].weight), change: oneDecimal(Number(weights[weights.length - 1].weight) - Number(weights[0].weight)) } : { start: 0, end: 0, change: 0 };
+  /* 无数据时返回 null（页面显示「—」），不要返回 0 值对象被误读为「体重 0 kg」 */
+  const weight = weights.length ? {
+    start: Number(weights[0].weight),
+    end: Number(weights[weights.length - 1].weight),
+    change: oneDecimal(Number(weights[weights.length - 1].weight) - Number(weights[0].weight))
+  } : null;
+  if (weight) weight.changeText = (weight.change > 0 ? '+' : '') + weight.change;
   const nextPlans = derivePlanOccurrences(source && source.plan, addDays(end, 1), nextEnd).filter((item) => !item.done && !item.skipped).map((item) => ({
     id: item.id,
     title: item.title,
     date: item.date,
+    dateShort: item.date.slice(5).replace('-', '/'),
     time: item.time || ''
   }));
   const memoryItems = valuesOfRecords(source && source.memories).filter((record) => {

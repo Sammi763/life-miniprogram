@@ -43,10 +43,23 @@ function accountInitials(name) {
   return value.slice(0, 2).join('') || '账';
 }
 
+/*
+ * 金额显示的唯一实现（记账 / 待买 / 月报共用）。
+ * 约定：整数不带小数，有小数最多两位且去掉末尾 0 —— 89 / 143.5 / 0.05。
+ * 之所以要统一：此前同一屏会同时出现 ¥89、¥54.5 与 ¥143.50、¥8356.50 两种写法
+ * （记账页直接绑定原始数字，待买页用 toFixed(2)，月报用「整数原样、否则两位」）。
+ * String(roundMoney(v)) 天然就是「去末尾 0」的写法，不需要再正则处理。
+ */
+function formatMoney(value) {
+  return String(roundMoney(value));
+}
+
 module.exports = {
   EXPENSE_CATEGORIES,
   INCOME_CATEGORIES,
   ACCOUNT_PRESETS,
   buildFinanceOverview,
-  accountInitials
+  accountInitials,
+  roundMoney,
+  formatMoney
 };

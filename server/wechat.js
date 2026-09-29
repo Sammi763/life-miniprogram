@@ -55,24 +55,6 @@ async function exchangeLoginCode(config, code) {
   return String(result.openid);
 }
 
-async function exchangePhoneCode(config, code) {
-  const phoneCode = String(code || '').trim();
-  if (!phoneCode || phoneCode.length > 512) throw new Error('bad_phone_code');
-  const accessToken = await getAccessToken(config);
-  const result = await requestJson(
-    'https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=' + encodeURIComponent(accessToken),
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ code: phoneCode })
-    },
-    config.wxHttpTimeoutMs
-  );
-  const phone = result.phone_info && result.phone_info.phoneNumber;
-  if (!phone) throw new Error('wechat_phone_missing');
-  return String(phone);
-}
-
 async function sendSubscriptionMessage(config, message) {
   const accessToken = await getAccessToken(config);
   return requestJson(
@@ -86,4 +68,4 @@ async function sendSubscriptionMessage(config, message) {
   );
 }
 
-module.exports = { exchangeLoginCode, exchangePhoneCode, getAccessToken, requestJson, sendSubscriptionMessage };
+module.exports = { exchangeLoginCode, getAccessToken, requestJson, sendSubscriptionMessage };

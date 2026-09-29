@@ -1,5 +1,7 @@
 {
-  "usingComponents": {},
+  "usingComponents": {
+    "undo-bar": "/components/undo-bar/undo-bar"
+  },
   "navigationBarTitleText": "记账",
   "enablePullDownRefresh": true,
   "backgroundTextStyle": "dark"

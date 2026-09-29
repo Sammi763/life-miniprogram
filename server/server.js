@@ -12,7 +12,7 @@ const { WebSocketServer } = require('ws');
 const { loadConfig } = require('./config');
 const { createStore } = require('./db/store');
 const { COLLECTIONS } = require('./db/mysql-store');
-const { exchangeLoginCode, exchangePhoneCode, sendSubscriptionMessage } = require('./wechat');
+const { exchangeLoginCode, sendSubscriptionMessage } = require('./wechat');
 const { getOneOffReminderPlan, ID_PATTERN, validateRecordData } = require('./validation');
 const { createReminderWorker, getReminderCapabilities, startReminderWorker } = require('./reminders');
 const { createInsightService } = require('./ai-insights');
@@ -45,6 +45,21 @@ function validNickname(value) {
   return typeof value === 'string' && value.trim().length <= 32;
 }
 
+function logLogin(req, startedAt, outcome, category, phase, status) {
+  const headerVersion = String(req.headers['x-client-build'] || '');
+  const buildVersion = /^[A-Za-z0-9._-]{1,48}$/.test(headerVersion) ? headerVersion : 'unknown';
+  console.log(JSON.stringify({
+    event: 'login',
+    at: new Date().toISOString(),
+    buildVersion,
+    outcome,
+    category,
+    phase,
+    status,
+    durationMs: Math.max(0, Date.now() - startedAt)
+  }));
+}
+
 function parseUpdatedAt(value) {
   const timestamp = Number(value);
   return Number.isSafeInteger(timestamp) && timestamp > 0 ? timestamp : Date.now();
@@ -74,7 +89,7 @@ function validateRecordId(req, res, next) {
   next();
 }
 
-function createRateLimiter(maxRequests, windowMs, keyResolver) {
+function createRateLimiter(maxRequests, windowMs, keyResolver, onLimit) {
   const entries = new Map();
   let lastSweep = 0;
   return (req, res, next) => {
@@ -90,7 +105,9 @@ function createRateLimiter(maxRequests, windowMs, keyResolver) {
     const key = String(keyResolver ? keyResolver(req) : (req.ip || req.socket.remoteAddress || 'unknown')) || 'unknown';
     const recent = (entries.get(key) || []).filter((timestamp) => now - timestamp < duration);
     if (recent.length >= limit) {
-      res.setHeader('Retry-After', Math.max(1, Math.ceil((duration - (now - recent[0])) / 1000)));
+      const retryAfter = Math.max(1, Math.ceil((duration - (now - recent[0])) / 1000));
+      res.setHeader('Retry-After', retryAfter);
+      if (typeof onLimit === 'function') onLimit(req, retryAfter);
       return res.status(429).json({ error: 'rate_limit_exceeded' });
     }
     recent.push(now);
@@ -131,6 +148,7 @@ function createApp(store, config, sockets, services) {
   const app = express();
   const options = services || {};
   const aiService = options.aiService || createInsightService({ store, config });
+  const loginCodeExchange = options.exchangeLoginCode || exchangeLoginCode;
 
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
@@ -158,13 +176,21 @@ function createApp(store, config, sockets, services) {
       res.setHeader('Access-Control-Allow-Origin', origin);
       res.setHeader('Vary', 'Origin');
     }
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Client-Build');
     res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, DELETE, POST, OPTIONS');
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
   });
   app.use(express.json({ limit: config.requestBodyLimit || '128kb' }));
-  app.use('/api', createRateLimiter(Number(config.apiRateLimit) || 240, 60 * 1000));
+  app.use('/api', (req, res, next) => {
+    if (req.method === 'POST' && String(req.originalUrl || '').split('?')[0] === '/api/login') req.loginStartedAt = Date.now();
+    next();
+  });
+  app.use('/api', createRateLimiter(Number(config.apiRateLimit) || 240, 60 * 1000, undefined, (req) => {
+    if (req.method === 'POST' && String(req.originalUrl || '').split('?')[0] === '/api/login') {
+      logLogin(req, req.loginStartedAt || Date.now(), 'failure', 'rate_limited', 'rate_limit', 429);
+    }
+  }));
 
   function auth(req, res, next) {
     const token = (req.headers.authorization || '').replace(/^Bearer\s+/i, '');
@@ -192,23 +218,34 @@ function createApp(store, config, sockets, services) {
     }
   });
 
-  app.post('/api/login', createRateLimiter(Number(config.loginRateLimit) || 30, 60 * 1000), async (req, res, next) => {
+  app.post('/api/login', createRateLimiter(Number(config.loginRateLimit) || 30, 60 * 1000, undefined, (req) => {
+    logLogin(req, req.loginStartedAt || Date.now(), 'failure', 'rate_limited', 'rate_limit', 429);
+  }), async (req, res, next) => {
+    const startedAt = req.loginStartedAt || Date.now();
+    let phase = 'request_validation';
     try {
       const code = String((req.body && req.body.code) || '');
       let openid = 'dev-user';
       if (!config.devMode) {
+        phase = 'wechat_code2session';
         try {
-          openid = await exchangeLoginCode(config, code);
+          openid = await loginCodeExchange(config, code);
         } catch (error) {
-          return res.status(401).json({ error: 'code2session_failed' });
+          logLogin(req, startedAt, 'failure', 'wechat_exchange_failed', phase, 401);
+          return res.status(401).json({ error: 'code2session_failed', phase });
         }
       }
+      phase = 'session_persist';
       const token = randomToken();
       await store.createSession(token, openid, Date.now() + config.tokenTtlDays * 24 * 3600 * 1000);
       await store.cleanupSessions();
-      res.json({ token, openid, devMode: config.devMode, profile: publicProfile(await store.getProfile(openid)) });
+      phase = 'profile_load';
+      const profile = publicProfile(await store.getProfile(openid));
+      logLogin(req, startedAt, 'success', 'ok', 'complete', 200);
+      res.json({ token, openid, devMode: config.devMode, profile });
     } catch (error) {
-      next(error);
+      logLogin(req, startedAt, 'failure', 'login_internal_error', phase, 500);
+      res.status(500).json({ error: 'login_failed', phase });
     }
   });
 
@@ -223,24 +260,13 @@ function createApp(store, config, sockets, services) {
   app.put('/api/profile', auth, async (req, res, next) => {
     try {
       const body = req.body || {};
+      if (Object.prototype.hasOwnProperty.call(body, 'phoneCode')) {
+        return res.status(422).json({ error: 'phone_binding_disabled' });
+      }
       const patch = {};
       if (body.nickname !== undefined) {
         if (!validNickname(body.nickname)) return res.status(422).json({ error: 'bad_nickname' });
         patch.nickname = body.nickname.trim();
-      }
-      if (body.phoneCode !== undefined) {
-        if (typeof body.phoneCode !== 'string' || !body.phoneCode.trim()) {
-          return res.status(422).json({ error: 'bad_phone_code' });
-        }
-        try {
-          const phone = config.devMode && body.phoneCode === 'dev-phone' && config.devPhoneNumber
-            ? config.devPhoneNumber
-            : await exchangePhoneCode(config, body.phoneCode);
-          // 原始手机号只在与微信交换的瞬间存在，落库前立即最小化为掩码。
-          patch.phone = maskPhone(phone);
-        } catch (error) {
-          return res.status(502).json({ error: 'phone_exchange_failed' });
-        }
       }
       if (!Object.keys(patch).length) return res.status(422).json({ error: 'empty_profile' });
       const profile = await store.updateProfile(req.openid, patch);
@@ -346,7 +372,8 @@ function createApp(store, config, sockets, services) {
       const validationError = validateRecordData(req.params.collection, body.data);
       if (validationError) return res.status(422).json({ error: validationError });
       const updatedAt = parseUpdatedAt(body.updatedAt);
-      const result = await store.upsert(req.openid, req.params.collection, req.params.id, body.data, updatedAt);
+      // createOnly：导入恢复专用语义 —— 云端已存在（存活或墓碑）时保留云端状态，仅不存在时创建
+      const result = await store.upsert(req.openid, req.params.collection, req.params.id, body.data, updatedAt, { createOnly: body.createOnly === true });
       if (result.applied && req.params.collection === 'plan') {
         await reconcilePlanReminder(store, req.openid, req.params.id, body.data);
       }

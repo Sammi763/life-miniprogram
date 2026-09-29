@@ -1,6 +1,9 @@
 .fab { bottom: calc(164rpx + env(safe-area-inset-bottom)); z-index: 101; }
 
-.habit-card { position: relative; }
+/* 卡片改为纵向 flex：让「管理」按 WXML 顺序自然排在进度条下方并右对齐。
+   旧实现把「管理」绝对定位到 right:28rpx/top:20rpx，与右侧打卡胶囊重叠
+   （实测 34×14px），文字互相压叠，且「管理」是 catchtap 会吞掉该区域的打卡点击。 */
+.habit-card { position: relative; display: flex; flex-direction: column; }
 .habit-row { display: flex; align-items: center; }
 .habit-info { flex: 1; }
 .habit-name { font-size: 30rpx; font-weight: 500; display: flex; align-items: center; gap: 12rpx; }
@@ -13,12 +16,36 @@
   background: var(--terra-soft); color: var(--terra); font-size: 26rpx;
 }
 .habit-btn-on { background: var(--green); color: #fff; }
+.habit-actions { display: flex; align-items: center; gap: 14rpx; flex-shrink: 0; }
+.habit-btn-minus { background: var(--surface); color: var(--ink-2); border: 1rpx solid var(--line); }
 .habit-bar {
   height: 10rpx; border-radius: 999rpx; background: var(--line);
   margin-top: 20rpx; overflow: hidden;
 }
 .habit-bar-fill { height: 100%; background: var(--terra); border-radius: 999rpx; }
 .habit-edit {
-  position: absolute; right: 28rpx; top: 20rpx;
-  font-size: 22rpx; color: var(--ink-2); padding: 6rpx 12rpx;
+  align-self: flex-end; margin-top: 6rpx;
+  font-size: 24rpx; color: var(--ink-2); padding: 12rpx 16rpx;
 }
+/* 历史/补录/管理 三个文字入口靠右排成一行（.habit-edit 保留靠右语义） */
+.habit-edit-row { display: flex; justify-content: flex-end; align-items: center; }
+/* 近 12 周热力图：12 列（周）× 7 行（周一至周日），纯 CSS 网格 */
+.habit-history { margin-top: 16rpx; }
+.habit-history-grid { display: flex; gap: 4rpx; overflow-x: auto; }
+.habit-history-week { display: flex; flex-direction: column; gap: 4rpx; }
+.habit-cell {
+  width: 22rpx; height: 22rpx; border-radius: 4rpx;
+  background: var(--line); flex-shrink: 0;
+}
+.habit-cell.lv-1 { background: var(--terra-soft); }
+.habit-cell.lv-2 { background: var(--terra); opacity: 0.55; }
+.habit-cell.lv-3 { background: var(--terra); }
+.habit-cell.is-future { opacity: 0.25; }
+.habit-history-meta {
+  display: flex; justify-content: space-between;
+  font-size: 20rpx; color: var(--ink-2); margin-top: 10rpx;
+}
+.picker-value { padding: 16rpx 0; font-size: 28rpx; color: var(--ink); }
+.value-steps { margin-bottom: 26rpx; }
+/* 编辑弹层内的删除入口 */
+.sheet-delete { margin-top: 8rpx; padding: 22rpx 0 8rpx; text-align: center; color: var(--red); font-size: 26rpx; }

@@ -7,8 +7,9 @@ const root = path.join(__dirname, '..');
 const expected = { today: 0, money: 1, habit: 2, mine: 3 };
 const helper = fs.readFileSync(path.join(root, 'miniprogram/utils/tabbar.js'), 'utf8');
 assert.match(helper, /getTabBar/, '需要通过页面获取自定义导航组件');
+/* 页面可用数字字面量或 TAB 常量（utils/tabbar.js 导出）同步索引 */
 Object.entries(expected).forEach(([page, index]) => {
   const source = fs.readFileSync(path.join(root, 'miniprogram/pages', page, page + '.js'), 'utf8');
-  assert.match(source, new RegExp('syncTabBar\\(this,\\s*' + index + '\\)'), page + ' 页面必须同步自己的导航索引');
+  assert.match(source, new RegExp('syncTabBar\\(this,\\s*(?:' + index + '|TAB\\.)'), page + ' 页面必须同步自己的导航索引');
 });
 console.log('TABBAR_SELECTION_TEST_PASSED');

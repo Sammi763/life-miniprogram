@@ -1,5 +1,7 @@
 {
-  "usingComponents": {},
+  "usingComponents": {
+    "undo-bar": "/components/undo-bar/undo-bar"
+  },
   "navigationBarTitleText": "减脂健身",
   "enablePullDownRefresh": true,
   "backgroundTextStyle": "dark"

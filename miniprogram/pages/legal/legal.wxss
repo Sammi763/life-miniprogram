@@ -3,12 +3,15 @@
 .legal-kicker { color:rgba(244,251,246,.7); font-size:19rpx; letter-spacing:2.6rpx; font-weight:700; }
 .legal-title { margin-top:10rpx; color:#FFF; font-size:42rpx; line-height:1.28; font-weight:700; }
 .legal-intro { margin-top:16rpx; color:rgba(244,251,246,.76); font-size:24rpx; line-height:1.8; }
-.legal-tabs { display:flex; margin:0 24rpx 20rpx; padding:8rpx; border:1rpx solid var(--line); border-radius:18rpx; background:rgba(255,255,255,.72); }
+.legal-tabs { display:flex; margin:0 24rpx 20rpx; padding:8rpx; border:1rpx solid var(--line); border-radius:18rpx; background:var(--card); }
 .legal-tab { flex:1; min-height:58rpx; display:flex; align-items:center; justify-content:center; border-radius:13rpx; color:var(--ink-2); font-size:23rpx; }
-.legal-tab.active { color:#FFF; background:var(--accent); font-weight:600; box-shadow:0 5rpx 12rpx rgba(35,72,63,.17); }
-.legal-card { margin:0 24rpx 18rpx; padding:30rpx; border:1rpx solid var(--line); border-radius:24rpx; background:var(--card); box-shadow:0 10rpx 28rpx rgba(31,56,43,.04); }
+.legal-tab.active { color:#FFF; background:var(--accent); font-weight:600; box-shadow:0 5rpx 12rpx var(--button-shadow); }
+.legal-anchor-scroll { white-space:nowrap; margin:0 24rpx 18rpx; }
+.legal-anchor-line { display:inline-flex; gap:12rpx; }
+.legal-anchor { padding:10rpx 20rpx; border-radius:999rpx; background:var(--accent-wash); color:var(--accent); font-size:22rpx; }
+.legal-card { margin:0 24rpx 18rpx; padding:30rpx; border:1rpx solid var(--line); border-radius:24rpx; background:var(--card); box-shadow:0 10rpx 28rpx var(--shadow-color); }
 .legal-heading { margin-bottom:16rpx; color:var(--ink); font-size:29rpx; font-weight:700; }
-.legal-paragraph { margin-top:13rpx; color:#4F5B54; font-size:25rpx; line-height:1.85; white-space:pre-wrap; }
+.legal-paragraph { margin-top:13rpx; color:var(--ink-2); font-size:25rpx; line-height:1.85; white-space:pre-wrap; }
 .legal-paragraph:first-of-type { margin-top:0; }
 .privacy-contract-btn { margin:0 24rpx; border-radius:18rpx; color:var(--accent); background:var(--accent-soft); font-size:26rpx; }
 .privacy-contract-btn::after { border:none; }

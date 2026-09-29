@@ -25,7 +25,7 @@
 .account-list { margin-top: 4rpx; }
 .account-item { display: flex; align-items: center; padding: 18rpx 0; border-bottom: 1rpx solid var(--line); }
 .account-item:last-child { border-bottom: none; }
-.account-monogram { width:72rpx; height:72rpx; flex-shrink:0; border-radius:20rpx; background:var(--green-soft); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:24rpx; font-weight:600; margin-right:18rpx; }.account-monogram.debt { background:#F8E8E7; color:var(--red); }
+.account-monogram { width:72rpx; height:72rpx; flex-shrink:0; border-radius:20rpx; background:var(--green-soft); color:var(--green); display:flex; align-items:center; justify-content:center; font-size:24rpx; font-weight:600; margin-right:18rpx; }.account-monogram.debt { background:var(--danger-soft); color:var(--red); }
 .account-copy { flex: 1; overflow: hidden; }
 .account-copy > view:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .account-bill { color: var(--red); font-size: 21rpx; margin-top: 4rpx; }
@@ -57,15 +57,23 @@
   font-size: 24rpx; margin-right: 20rpx; flex-shrink: 0;
   text-align: center; line-height: 1.3; padding: 0 8rpx;
 }
-.transfer-cat { background:#EDF0EC; color:#68746D; }
+.transfer-cat { width: 128rpx; background: var(--accent-wash); color: var(--ink-2); }
 .mon-mid { flex: 1; overflow: hidden; }
 .mon-mid > view:first-child {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .mon-amt { font-size: 30rpx; font-weight: 600; flex-shrink: 0; margin-left: 16rpx; }
-.category-chips { max-height: 280rpx; overflow-y: auto; padding-right: 4rpx; }
+.category-chips { max-height: 340rpx; overflow-y: auto; padding-right: 4rpx; }
 
-.account-sheet { max-height: 82vh; overflow-y: auto; box-sizing: border-box; }
+/* 记账核心动作是金额：表单首位放大展示，减少聚焦后的视觉跳动 */
+.amount-field { margin-bottom: 30rpx; }
+.amount-input-wrap { display: flex; align-items: center; gap: 8rpx; background: var(--surface); border: 1rpx solid var(--line); border-radius: 16rpx; min-height: 108rpx; padding: 0 24rpx; }
+.amount-cny { color: var(--ink-2); font-size: 40rpx; }
+.amount-input { flex: 1; font-size: 52rpx; font-weight: 650; color: var(--ink); height: 108rpx; }
+.field-hint { margin-left: 12rpx; font-size: 20rpx; color: var(--ink-2); font-weight: 400; }
+
+/* 编辑弹层内的删除入口：危险色、通栏，与保存按钮拉开距离 */
+.sheet-delete { margin-top: 8rpx; padding: 22rpx 0 8rpx; text-align: center; color: var(--red); font-size: 26rpx; }
 .account-presets { display: flex; flex-wrap: wrap; gap: 12rpx; }
 .account-preset { width:calc(33.333% - 8rpx); min-height:68rpx; box-sizing:border-box; padding:8rpx 10rpx; border-radius:14rpx; border:1rpx solid var(--line); background:var(--surface); display:flex; flex-direction:column; justify-content:center; align-items:center; color:var(--ink-2); font-size:22rpx; line-height:1.3; }
 .account-preset.on { border-color: var(--terra); background: var(--terra-soft); color: var(--terra); }
@@ -75,3 +83,37 @@
 .bill-amount { text-align: right; }
 .inline-field { display: flex; gap: 24rpx; }
 .inline-field > view { flex: 1; min-width: 0; }
+/* 分类管理入口与弹层 */
+.cat-manage-entry { display:flex; justify-content:space-between; align-items:center; margin:0 24rpx 20rpx; padding:16rpx 24rpx; border-radius:18rpx; color:var(--ink); background:var(--surface); border:1rpx solid var(--line); font-size:26rpx; }
+.cat-manage-entry .sub { font-size: 22rpx; }
+.cat-manage-list { max-height: 46vh; overflow-y: auto; }
+.cat-row { display:flex; align-items:center; justify-content:space-between; gap:16rpx; padding:16rpx 0; border-bottom:1rpx solid var(--line); }
+.cat-row.is-hidden .cat-row-name { opacity: 0.5; }
+.cat-row-name { display:flex; align-items:center; gap:10rpx; font-size:26rpx; flex-wrap: wrap; }
+.cat-tag { font-size:18rpx; color:var(--terra); background:var(--terra-soft); border-radius:6rpx; padding:2rpx 8rpx; }
+.cat-tag.dim { color:var(--ink-2); background:var(--surface); border:1rpx solid var(--line); }
+.cat-row-actions { display:flex; align-items:center; gap:14rpx; flex-shrink:0; }
+.cat-act { font-size:22rpx; color:var(--ink-2); padding:8rpx 14rpx; border-radius:10rpx; border:1rpx solid var(--line); white-space:nowrap; }
+.cat-act.on { color:var(--terra); border-color:var(--terra); background:var(--terra-soft); }
+.cat-act.danger { color:var(--red); }
+.cat-add-row { display:flex; align-items:center; gap:16rpx; }
+.cat-add-row input { flex:1; }
+.cat-add-btn { padding:0 28rpx; line-height:64rpx; font-size:26rpx; }
+.cat-manage-hint { margin-top: 10rpx; }
+/* 列表 / 月历视图切换 */
+.view-toggle { display:flex; gap:10rpx; justify-content:flex-end; margin-top:16rpx; }
+.view-opt { font-size:24rpx; color:var(--ink-2); padding:8rpx 22rpx; border-radius:999rpx; border:1rpx solid var(--line); }
+.view-opt.on { color:var(--accent); border-color:var(--accent); background:var(--accent-soft); }
+/* 记账月历：周一起始，点某天进入当天流水 */
+.cal-head { display:flex; }
+.cal-dow { flex:1; text-align:center; font-size:22rpx; color:var(--ink-2); padding-bottom:12rpx; }
+.cal-week { display:flex; }
+.cal-cell { flex:1; min-height:76rpx; display:flex; flex-direction:column; align-items:center; justify-content:center; border-radius:10rpx; margin:2rpx; }
+.cal-cell.is-empty { pointer-events:none; }
+.cal-day { font-size:24rpx; color:var(--ink); }
+.cal-out { font-size:18rpx; color:var(--red); }
+.cal-cell.is-today .cal-day { color:var(--accent); font-weight:600; }
+.cal-cell.is-selected { background:var(--accent-soft); }
+.cal-hint { margin-top:10rpx; }
+/* 「仅看某天」过滤行 */
+.day-filter-row { display:flex; align-items:center; justify-content:space-between; margin:0 24rpx 16rpx; }

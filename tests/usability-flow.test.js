@@ -64,6 +64,7 @@ async function main() {
     getBaseUrl: api.getBaseUrl,
     getProfile: api.getProfile,
     getToken: api.getToken,
+    login: api.login,
     updateProfile: api.updateProfile,
     validateSession: api.validateSession,
     init: sync.init,
@@ -77,17 +78,18 @@ async function main() {
     const events = [];
     global.wx = {
       showToast: () => events.push('toast'),
+      showLoading: () => events.push('loading:show'),
       switchTab: (options) => events.push('tab:' + options.url),
-      hideLoading() {},
+      hideLoading: () => events.push('loading:hide'),
       createCanvasContext: () => ({})
     };
 
     // 编辑资料必须留在资料页，保存后回到「我的」，不能被登录页自动跳走。
     api.getBaseUrl = () => 'http://127.0.0.1:8787';
-    api.getProfile = () => ({ nickname: '旧昵称', hasPhone: false });
+    api.getProfile = () => ({ nickname: '旧昵称' });
     api.getToken = () => 'session-token';
-    api.validateSession = () => Promise.resolve({ nickname: '已登录用户', hasPhone: true, phone: '138****8000' });
-    api.updateProfile = (patch) => Promise.resolve({ ...patch, hasPhone: true, phone: '138****8000' });
+    api.validateSession = () => Promise.resolve({ nickname: '已登录用户' });
+    api.updateProfile = (patch) => Promise.resolve(patch);
     sync.init = () => events.push('sync:init');
     const login = makePage(loadPage('miniprogram/pages/login/login.js'));
     login.onLoad.call(login, { edit: '1' });
@@ -99,6 +101,46 @@ async function main() {
     login.completeProfile.call(login);
     await tick();
     assert.ok(events.includes('tab:/pages/mine/mine'), '资料保存后应回到我的页');
+
+    // 登录连续失败后必须结束加载态，并允许用户再次点击；昵称留空仍可进入首页。
+    let attempts = 0;
+    let loginPage;
+    api.login = (options) => {
+      attempts++;
+      if (attempts === 1) {
+        options.onRetry({ retry: 1, maxRetries: 1, category: 'network_timeout' });
+        assert.match(loginPage.data.loginStatus, /重新获取凭证并重试/);
+        return Promise.reject({ category: 'network_timeout' });
+      }
+      return Promise.resolve({ nickname: '' });
+    };
+    loginPage = makePage(loadPage('miniprogram/pages/login/login.js'));
+    loginPage.data.termsAccepted = true;
+    loginPage.onLogin.call(loginPage);
+    await tick();
+    assert.strictEqual(loginPage.data.loggingIn, false, 'failed login must clear loading state');
+    assert.strictEqual(loginPage.data.loginFailed, true, 'failed login must expose a retry state');
+    // 失败文案必须同时说明「已重试」与「下一步怎么做」，不能只说失败
+    assert.match(loginPage.data.serverError, /重试/);
+    assert.match(loginPage.data.serverError, /仍未成功/);
+    assert.match(loginPage.data.serverError, /切换网络|检查网络/);
+    assert.strictEqual(loginPage.data.loginStatus, '', 'final failure replaces transient retry status');
+    assert.ok(events.includes('loading:hide'), 'loading indicator must always be hidden after failure');
+
+    loginPage.onLogin.call(loginPage);
+    await tick();
+    assert.strictEqual(attempts, 2, 'a second button click must start a new login');
+    assert.strictEqual(loginPage.data.loggedIn, true);
+    assert.strictEqual(loginPage.data.loggingIn, false);
+    assert.strictEqual(loginPage.data.loginFailed, false);
+    loginPage.completeProfile.call(loginPage);
+    await tick();
+    assert.ok(events.includes('tab:/pages/today/today'), 'an empty optional nickname must continue to the home page');
+
+    const loginTemplate = fs.readFileSync(path.join(root, 'miniprogram/pages/login/login.wxml'), 'utf8');
+    const mineTemplate = fs.readFileSync(path.join(root, 'miniprogram/pages/mine/mine.wxml'), 'utf8');
+    assert.doesNotMatch(loginTemplate + mineTemplate, /getPhoneNumber|手机号|phoneCode|hasPhone/);
+    assert.match(loginTemplate, /昵称可留空跳过/);
 
     // 预算与健身设置共用 settings.app，保存预算不能覆盖身高和目标体重。
     const upserts = [];
@@ -168,6 +210,7 @@ async function main() {
     api.getBaseUrl = original.getBaseUrl;
     api.getProfile = original.getProfile;
     api.getToken = original.getToken;
+    api.login = original.login;
     api.updateProfile = original.updateProfile;
     api.validateSession = original.validateSession;
     sync.init = original.init;

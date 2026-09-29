@@ -9,3 +9,12 @@ project.private.config.json
 
 # 个人配置：appid 等本地信息写在这里，不入库
 # 微信小程序密钥、DeepSeek API Key 只放服务器 .env 或 app_secrets，禁止入库
+
+# ZCode 本地工具产物
+.zcode/
+.zcodeignore
+
+# 发布归档：根目录 life-sync-* 是历史包，新版打包产物输出到 dist/
+life-sync-*.tar.gz
+life-sync-*.tgz
+dist/

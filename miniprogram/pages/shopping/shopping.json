@@ -1,5 +1,7 @@
 {
-  "usingComponents": {},
+  "usingComponents": {
+    "undo-bar": "/components/undo-bar/undo-bar"
+  },
   "navigationBarTitleText": "待买清单",
   "enablePullDownRefresh": true,
   "backgroundTextStyle": "dark"

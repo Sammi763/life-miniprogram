@@ -1,32 +1,174 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，账本改动已暂存在本机</text><text bindtap="onPullDownRefresh" style="font-weight:600">重试</text></view>
+<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，账本改动已暂存在本机</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
 
-<view class="mon-head"><view class="mon-arrow" bindtap="prevMonth">‹</view><view class="h1">{{monthText}}</view><view class="mon-arrow" bindtap="nextMonth">›</view></view>
-<view class="report-entry" bindtap="goReport"><text>查看私密月度报告</text><text>财务与生活回顾 ›</text></view>
+<view class="mon-head"><view class="mon-arrow tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="prevMonth">‹</view><view class="h1">{{monthText}}</view><view class="mon-arrow tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="nextMonth">›</view></view>
+<view class="report-entry tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goReport"><text>查看私密月度报告</text><text>财务与生活回顾 ›</text></view>
+<view class="cat-manage-entry tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openCatManage"><text>分类管理</text><text class="sub">收藏 · 隐藏 · 自定义 ›</text></view>
 
 <view class="card account-card">
-  <view class="card-title"><view><text>规划账本</text><view class="sub">期初余额＋流水推导＋手工校准</view></view><text class="more account-add" bindtap="openAccountAdd">＋ 添加账户</text></view>
+  <view class="card-title"><view><text>规划账本</text><view class="sub">期初余额＋流水推导＋手工校准</view></view><view class="more account-add tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openAccountAdd">＋ 添加账户</view></view>
   <view class="networth-row"><view><view class="sub">净资产</view><view class="networth-num">¥{{accountOverview.netAssets}}</view></view><view class="account-count"><view class="sub">已记录</view><view>{{accountOverview.accountCount}} 个账户</view></view></view>
   <view class="account-totals"><view><view class="sub">总资产</view><view class="money-in">¥{{accountOverview.assetTotal}}</view></view><view><view class="sub">待还欠款</view><view class="money-out">¥{{accountOverview.liabilityTotal}}</view></view></view>
-  <view wx:if="{{accounts.length}}" class="account-list"><view wx:for="{{accounts}}" wx:key="id" class="account-item record-card" hover-class="record-card-pressed" bindtap="openAccountEdit" data-id="{{item.id}}"><view class="account-monogram {{item.kind === 'liability' ? 'debt' : ''}}">{{item.shortName}}</view><view class="account-copy"><view>{{item.name}}</view><view class="sub">{{item.kindText}} · 流水 {{item.flowText}}</view><view wx:if="{{item.billText}}" class="account-bill">{{item.billText}}</view></view><view class="account-amount {{item.kind === 'liability' ? 'money-out' : 'money-in'}}">{{item.kind === 'liability' ? '-' : ''}}¥{{item.balanceText}}</view></view></view>
+  <view wx:if="{{accounts.length}}" class="account-list"><view wx:for="{{accounts}}" wx:key="id" class="account-item record-card" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openAccountEdit" data-id="{{item.id}}"><view class="account-monogram {{item.kind === 'liability' ? 'debt' : ''}}">{{item.shortName}}</view><view class="account-copy"><view>{{item.name}}</view><view class="sub">{{item.kindText}} · 流水 {{item.flowText}}</view><view wx:if="{{item.billText}}" class="account-bill">{{item.billText}}</view></view><view class="account-amount {{item.kind === 'liability' ? 'money-out' : 'money-in'}}">{{item.kind === 'liability' ? '-' : ''}}¥{{item.balanceText}}</view></view></view>
   <view wx:else class="account-empty">先把银行卡、支付余额和待还账单放在一起，之后每笔流水都会自动推导余额。</view>
   <view class="account-hint">不会读取银行卡、支付宝或微信真实余额；所有账户和账单都由你手工输入。</view>
 </view>
 
 <view wx:if="{{billAlerts.length}}" class="card bill-alert-card"><view class="card-title"><text>临近还款</text><text class="sub">手工账单提醒</text></view><view wx:for="{{billAlerts}}" wx:key="id" class="bill-alert"><view><view>{{item.name}}</view><view class="sub">{{item.dueDate}} · {{item.daysLeft === 0 ? '今天到期' : item.daysLeft + ' 天后到期'}}</view></view><view class="bill-amount"><view class="money-out">¥{{item.currentBill}}</view><view class="sub" wx:if="{{item.minimumPayment}}">最低 ¥{{item.minimumPayment}}</view></view></view></view>
 
-<view class="card"><view class="mon-sum"><view class="mon-cell"><view class="sub">支出</view><view class="money-out money-num">¥{{sumOut}}</view></view><view class="mon-cell"><view class="sub">收入</view><view class="money-in money-num">¥{{sumIn}}</view></view><view class="mon-cell"><view class="sub">转账</view><view class="money-transfer money-num">¥{{sumTransfer}}</view></view></view><view class="sub transfer-note">转账和还款只影响账户余额，不重复计入收入或支出。</view><view class="money-color-note sub"><text class="money-in">绿色＝资金流入</text><text class="money-out">红色＝资金流出</text></view><view wx:if="{{filters.length}}" class="chips mon-chips"><view class="chip {{filter === '' ? 'on' : ''}}" bindtap="setFilter" data-cat="">全部</view><view wx:for="{{filters}}" wx:key="*this" class="chip {{filter === item ? 'on' : ''}}" bindtap="setFilter" data-cat="{{item}}">{{item}}</view></view></view>
+<view class="card"><view class="mon-sum"><view class="mon-cell"><view class="sub">支出</view><view class="money-out money-num">¥{{sumOutText}}</view></view><view class="mon-cell"><view class="sub">收入</view><view class="money-in money-num">¥{{sumInText}}</view></view><view class="mon-cell"><view class="sub">转账</view><view class="money-transfer money-num">¥{{sumTransferText}}</view></view></view><view class="sub transfer-note">转账和还款只影响账户余额，不重复计入收入或支出。</view><view class="money-color-note sub"><text class="money-in">绿色＝资金流入</text><text class="money-out">红色＝资金流出</text></view><view wx:if="{{filters.length}}" class="chips mon-chips"><view class="chip {{filter === '' ? 'on' : ''}}" bindtap="setFilter" data-cat="" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">全部</view><view wx:for="{{filters}}" wx:key="*this" class="chip {{filter === item ? 'on' : ''}}" bindtap="setFilter" data-cat="{{item}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item}}</view></view><view class="view-toggle"><view class="view-opt {{viewMode === 'list' ? 'on' : ''}}" bindtap="setViewMode" data-mode="list" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">列表</view><view class="view-opt {{viewMode === 'calendar' ? 'on' : ''}}" bindtap="setViewMode" data-mode="calendar" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">月历</view></view></view>
 
-<view wx:if="{{groups.length === 0}}" class="card"><view class="empty">这个月还没有流水，先记一笔生活开销吧。</view></view>
-<view wx:for="{{groups}}" wx:key="date" wx:for-item="group" class="card"><view class="mon-date"><text>{{group.date}}</text><text class="sub">支出 ¥{{group.dayOut}}</text></view><view wx:for="{{group.items}}" wx:key="id" wx:for-item="item" class="mon-item record-card" hover-class="record-card-pressed" bindtap="openEdit" data-id="{{item.id}}"><view class="mon-cat {{item.type === 'transfer' ? 'transfer-cat' : ''}}">{{item.category}}</view><view class="mon-mid"><view>{{item.note || item.category}}</view><view class="sub">{{item.accountText}}</view></view><view class="{{item.type === 'income' ? 'money-in' : item.type === 'transfer' ? 'money-transfer' : 'money-out'}} mon-amt">{{item.amountPrefix}}¥{{item.amount}}</view></view></view>
+<view wx:if="{{viewMode === 'calendar'}}" class="card">
+  <view class="cal-head"><text class="cal-dow">一</text><text class="cal-dow">二</text><text class="cal-dow">三</text><text class="cal-dow">四</text><text class="cal-dow">五</text><text class="cal-dow">六</text><text class="cal-dow">日</text></view>
+  <view wx:for="{{calendarWeeks}}" wx:for-item="week" wx:for-index="wi" wx:key="wi" class="cal-week">
+    <view wx:for="{{week.days}}" wx:for-item="cell" wx:for-index="di" wx:key="di"
+      class="cal-cell {{cell.empty ? 'is-empty' : ''}} {{cell.isToday ? 'is-today' : ''}} {{cell.isSelected ? 'is-selected' : ''}}"
+      bindtap="tapCalendarDay" data-date="{{cell.date}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
+      <text class="cal-day">{{cell.day}}</text>
+      <text wx:if="{{cell.hasOut}}" class="cal-out">{{cell.outText}}</text>
+    </view>
+  </view>
+  <view class="sub cal-hint">按日支出合计；点某天进入当天流水。</view>
+</view>
 
-<view class="fab" bindtap="openAdd">＋</view>
+<view wx:if="{{dayFilter && viewMode === 'list'}}" class="day-filter-row"><text class="sub">仅看 {{dayFilter}} 的流水</text><view class="chip" bindtap="clearDayFilter" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">查看整月</view></view>
+
+<view wx:if="{{groups.length === 0 && viewMode === 'list'}}" class="card"><view class="empty">这个月还没有流水，先记一笔生活开销吧。</view></view>
+<view wx:for="{{groups}}" wx:key="date" wx:for-item="group" class="card">
+  <view class="mon-date"><text>{{group.date}}</text><text class="sub">支出 ¥{{group.dayOut}}</text></view>
+  <view wx:for="{{group.items}}" wx:key="id" wx:for-item="item" class="mon-item record-card" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openEdit" data-id="{{item.id}}">
+    <view class="mon-cat {{item.type === 'transfer' ? 'transfer-cat' : ''}}">{{item.category}}</view>
+    <view class="mon-mid">
+      <view>{{item.note || item.category}}</view>
+      <view class="sub">{{item.accountText}}</view>
+    </view>
+    <view class="{{item.type === 'income' ? 'money-in' : item.type === 'transfer' ? 'money-transfer' : 'money-out'}} mon-amt">{{item.amountPrefix}}¥{{item.amountText}}</view>
+  </view>
+</view>
+
+<view class="fab" hover-class="fab-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openAdd">＋</view>
 
 <view wx:if="{{sheetShow}}" class="mask" bindtap="closeSheet"></view>
-<view wx:if="{{sheetShow}}" class="sheet money-sheet" catchtap="noop"><view class="sheet-title">{{form.id ? '编辑流水' : '记一笔'}}</view><view class="chips field"><view class="chip {{form.type === 'expense' ? 'on' : ''}}" bindtap="setType" data-type="expense">支出</view><view class="chip {{form.type === 'income' ? 'on' : ''}}" bindtap="setType" data-type="income">收入</view><view class="chip {{form.type === 'transfer' ? 'on' : ''}}" bindtap="setType" data-type="transfer">转账</view></view><view class="field"><view class="field-label">金额</view><input type="digit" value="{{form.amount}}" bindinput="onAmount" placeholder="0.00" /></view><view wx:if="{{form.type !== 'transfer'}}" class="field"><view class="field-label">分类</view><view class="chips category-chips"><view wx:for="{{cats}}" wx:key="*this" class="chip {{form.category === item ? 'on' : ''}}" bindtap="setCat" data-cat="{{item}}">{{item}}</view></view></view><view class="field"><view class="field-label">{{form.type === 'transfer' ? '转出账户' : '所属账户（可选）'}}</view><picker mode="selector" range="{{form.type === 'transfer' ? transferAccounts : accountOptions}}" range-key="name" value="{{form.accountIndex}}" bindchange="onAccountChange"><view class="picker-value">{{form.accountName}}</view></picker></view><view wx:if="{{form.type === 'transfer'}}" class="field"><view class="field-label">转入账户</view><picker mode="selector" range="{{transferAccounts}}" range-key="name" value="{{form.toAccountIndex}}" bindchange="onToAccountChange"><view class="picker-value">{{form.toAccountName}}</view></picker></view><view class="field"><view class="field-label">日期</view><picker mode="date" value="{{form.date}}" bindchange="onDate"><view class="picker-value">{{form.date}}</view></picker></view><view class="field"><view class="field-label">备注</view><input value="{{form.note}}" bindinput="onNote" placeholder="可不填" maxlength="100" /></view><button class="btn btn-primary" bindtap="save">保存</button></view>
+<view wx:if="{{sheetShow}}" class="sheet money-sheet" catchtap="noop">
+  <view class="sheet-title">{{form.id ? '编辑流水' : '记一笔'}}</view>
+  <view class="chips field">
+    <view class="chip {{form.type === 'expense' ? 'on' : ''}}" bindtap="setType" data-type="expense" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">支出</view>
+    <view class="chip {{form.type === 'income' ? 'on' : ''}}" bindtap="setType" data-type="income" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">收入</view>
+    <view class="chip {{form.type === 'transfer' ? 'on' : ''}}" bindtap="setType" data-type="transfer" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">转账</view>
+  </view>
+  <view class="field amount-field">
+    <view class="field-label">金额</view>
+    <view class="amount-input-wrap"><text class="amount-cny">¥</text><input class="amount-input" type="digit" value="{{form.amount}}" bindinput="onAmount" placeholder="0.00" confirm-type="next" cursor-spacing="24" /></view>
+  </view>
+  <view wx:if="{{form.type !== 'transfer'}}" class="field">
+    <view class="field-label">分类<text class="field-hint">常用分类会排在前面</text></view>
+    <view class="chips category-chips">
+      <view wx:for="{{cats}}" wx:key="*this" class="chip {{form.category === item ? 'on' : ''}}" bindtap="setCat" data-cat="{{item}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item}}</view>
+    </view>
+  </view>
+  <view class="field">
+    <view class="field-label">{{form.type === 'transfer' ? '转出账户' : '所属账户（可选）'}}</view>
+    <picker mode="selector" range="{{form.type === 'transfer' ? transferAccounts : accountOptions}}" range-key="name" value="{{form.accountIndex}}" bindchange="onAccountChange"><view class="picker-value">{{form.accountName}}</view></picker>
+  </view>
+  <view wx:if="{{form.type === 'transfer'}}" class="field">
+    <view class="field-label">转入账户</view>
+    <picker mode="selector" range="{{transferAccounts}}" range-key="name" value="{{form.toAccountIndex}}" bindchange="onToAccountChange"><view class="picker-value">{{form.toAccountName}}</view></picker>
+  </view>
+  <view class="field">
+    <view class="field-label">日期</view>
+    <picker mode="date" value="{{form.date}}" bindchange="onDate"><view class="picker-value">{{form.date}}</view></picker>
+  </view>
+  <view class="field">
+    <view class="field-label">备注</view>
+    <input value="{{form.note}}" bindinput="onNote" placeholder="可不填" maxlength="100" confirm-type="done" cursor-spacing="24" />
+  </view>
+  <button class="btn btn-primary" disabled="{{saving}}" bindtap="save" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{saving ? '保存中…' : '保存'}}</button>
+  <view wx:if="{{form.id}}" class="sheet-delete tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="removeTransaction">删除这笔流水</view>
+</view>
 
 <view wx:if="{{accountSheetShow}}" class="mask" bindtap="closeAccountSheet"></view>
-<view wx:if="{{accountSheetShow}}" class="sheet account-sheet" catchtap="noop"><view class="sheet-title">{{accountForm.id ? '编辑账户' : '添加账户'}}</view><view class="field"><view class="field-label">常用账户</view><view class="account-presets"><view wx:for="{{accountPresets}}" wx:key="name" class="account-preset {{accountForm.name === item.name ? 'on' : ''}}" bindtap="selectAccountPreset" data-name="{{item.name}}" data-kind="{{item.kind}}" data-category="{{item.category}}"><text>{{item.name}}</text><text class="preset-kind">{{item.kind === 'liability' ? '欠款' : '余额'}}</text></view></view></view><view class="chips field"><view class="chip {{accountForm.kind === 'asset' ? 'on' : ''}}" bindtap="setAccountKind" data-kind="asset">资产余额</view><view class="chip {{accountForm.kind === 'liability' ? 'on' : ''}}" bindtap="setAccountKind" data-kind="liability">待还欠款</view></view><view class="field"><view class="field-label">账户名称</view><input value="{{accountForm.name}}" bindinput="onAccountName" placeholder="例如：招商银行卡" maxlength="32" /></view><view class="field"><view class="field-label">期初{{accountForm.kind === 'liability' ? '欠款' : '余额'}}</view><input type="digit" value="{{accountForm.openingBalance}}" bindinput="onOpeningBalance" placeholder="0.00" /></view><view class="field"><view class="field-label">手工校准（可正可负）</view><input type="text" value="{{accountForm.manualAdjustment}}" bindinput="onManualAdjustment" placeholder="例如：-12.50" /></view><view wx:if="{{accountForm.kind === 'liability'}}" class="bill-form"><view class="field"><view class="field-label">本期应还</view><input type="digit" value="{{accountForm.currentBill}}" bindinput="onCurrentBill" placeholder="可不填" /></view><view class="field"><view class="field-label">最低还款额</view><input type="digit" value="{{accountForm.minimumPayment}}" bindinput="onMinimumPayment" placeholder="可不填" /></view><view class="field inline-field"><view><view class="field-label">账单日</view><input type="number" value="{{accountForm.statementDay}}" bindinput="onStatementDay" placeholder="如 2" /></view><view><view class="field-label">还款日</view><input type="number" value="{{accountForm.dueDay}}" bindinput="onDueDay" placeholder="如 8" /></view></view></view><view class="field"><view class="field-label">备注</view><input value="{{accountForm.note}}" bindinput="onAccountNote" placeholder="例如：每月 8 日还款" maxlength="200" /></view><button class="btn btn-primary" bindtap="saveAccount">保存账户</button></view>
+<view wx:if="{{accountSheetShow}}" class="sheet account-sheet" catchtap="noop">
+  <view class="sheet-title">{{accountForm.id ? '编辑账户' : '添加账户'}}</view>
+  <view class="field">
+    <view class="field-label">常用账户</view>
+    <view class="account-presets">
+      <view wx:for="{{accountPresets}}" wx:key="name" class="account-preset {{accountForm.name === item.name ? 'on' : ''}}" bindtap="selectAccountPreset" data-name="{{item.name}}" data-kind="{{item.kind}}" data-category="{{item.category}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><text>{{item.name}}</text><text class="preset-kind">{{item.kind === 'liability' ? '欠款' : '余额'}}</text></view>
+    </view>
+  </view>
+  <view class="chips field">
+    <view class="chip {{accountForm.kind === 'asset' ? 'on' : ''}}" bindtap="setAccountKind" data-kind="asset" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">资产余额</view>
+    <view class="chip {{accountForm.kind === 'liability' ? 'on' : ''}}" bindtap="setAccountKind" data-kind="liability" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">待还欠款</view>
+  </view>
+  <view class="field">
+    <view class="field-label">账户名称</view>
+    <input value="{{accountForm.name}}" bindinput="onAccountName" placeholder="例如：招商银行卡" maxlength="32" confirm-type="next" cursor-spacing="24" />
+  </view>
+  <view class="field">
+    <view class="field-label">期初{{accountForm.kind === 'liability' ? '欠款' : '余额'}}</view>
+    <input type="digit" value="{{accountForm.openingBalance}}" bindinput="onOpeningBalance" placeholder="0.00" confirm-type="next" cursor-spacing="24" />
+  </view>
+  <view class="field">
+    <view class="field-label">手工校准（可正可负）</view>
+    <input type="text" value="{{accountForm.manualAdjustment}}" bindinput="onManualAdjustment" placeholder="例如：-12.50" confirm-type="next" cursor-spacing="24" />
+  </view>
+  <block wx:if="{{accountForm.kind === 'liability'}}">
+    <view class="bill-form">
+      <view class="field">
+        <view class="field-label">本期应还</view>
+        <input type="digit" value="{{accountForm.currentBill}}" bindinput="onCurrentBill" placeholder="可不填" confirm-type="next" cursor-spacing="24" />
+      </view>
+      <view class="field">
+        <view class="field-label">最低还款额</view>
+        <input type="digit" value="{{accountForm.minimumPayment}}" bindinput="onMinimumPayment" placeholder="可不填" confirm-type="next" cursor-spacing="24" />
+      </view>
+      <view class="field inline-field">
+        <view><view class="field-label">账单日</view><input type="number" value="{{accountForm.statementDay}}" bindinput="onStatementDay" placeholder="如 2" confirm-type="next" cursor-spacing="24" /></view>
+        <view><view class="field-label">还款日</view><input type="number" value="{{accountForm.dueDay}}" bindinput="onDueDay" placeholder="如 8" confirm-type="done" cursor-spacing="24" /></view>
+      </view>
+    </view>
+  </block>
+  <view class="field">
+    <view class="field-label">备注</view>
+    <input value="{{accountForm.note}}" bindinput="onAccountNote" placeholder="例如：每月 8 日还款" maxlength="200" confirm-type="done" cursor-spacing="24" />
+  </view>
+  <button class="btn btn-primary" disabled="{{saving}}" bindtap="saveAccount" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{saving ? '保存中…' : '保存账户'}}</button>
+  <view wx:if="{{accountForm.id}}" class="sheet-delete tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="removeAccount">删除这个账户（流水会保留为历史记录）</view>
+</view>
+
+<view wx:if="{{catSheetShow}}" class="mask" bindtap="closeCatSheet"></view>
+<view wx:if="{{catSheetShow}}" class="sheet cat-sheet" catchtap="noop">
+  <view class="sheet-title">分类管理</view>
+  <view class="chips field">
+    <view class="chip {{catTab === 'expense' ? 'on' : ''}}" bindtap="setCatTab" data-tab="expense" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">支出分类</view>
+    <view class="chip {{catTab === 'income' ? 'on' : ''}}" bindtap="setCatTab" data-tab="income" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">收入分类</view>
+  </view>
+  <view class="cat-manage-list">
+    <view wx:for="{{catRows}}" wx:key="name" class="cat-row {{item.hidden ? 'is-hidden' : ''}}">
+      <view class="cat-row-name">
+        <text>{{item.name}}</text>
+        <text wx:if="{{item.custom}}" class="cat-tag">自定义</text>
+        <text wx:if="{{item.hidden}}" class="cat-tag dim">已隐藏</text>
+        <text wx:if="{{item.usage}}" class="cat-tag dim">{{item.usage}} 笔</text>
+      </view>
+      <view class="cat-row-actions">
+        <view class="cat-act {{item.favorite ? 'on' : ''}}" catchtap="toggleCatFavorite" data-name="{{item.name}}" data-type="{{item.type}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.favorite ? '★' : '☆'}}</view>
+        <view class="cat-act {{item.hidden ? 'on' : ''}}" catchtap="toggleCatHidden" data-name="{{item.name}}" data-type="{{item.type}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.hidden ? '取消隐藏' : '隐藏'}}</view>
+        <view wx:if="{{item.custom}}" class="cat-act" catchtap="renameCat" data-name="{{item.name}}" data-type="{{item.type}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">改名</view>
+        <view wx:if="{{item.custom}}" class="cat-act danger" catchtap="removeCat" data-name="{{item.name}}" data-type="{{item.type}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">删除</view>
+      </view>
+    </view>
+  </view>
+  <view class="field">
+    <view class="field-label">新增自定义{{catTab === 'income' ? '收入' : '支出'}}分类</view>
+    <view class="cat-add-row">
+      <input value="{{catNewName}}" bindinput="onCatNewName" placeholder="如：咖啡 / 宠物用品" maxlength="16" confirm-type="done" cursor-spacing="24" />
+      <button class="btn cat-add-btn" bindtap="addCat" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">添加</button>
+    </view>
+  </view>
+  <view class="sub cat-manage-hint">改名与删除只影响今后选择，历史流水保留原分类；隐藏的分类不再出现在「记一笔」里。收藏的分类会置顶显示。</view>
+</view>
+
+<undo-bar show="{{undoShow}}" text="{{undoText}}" bind:undo="onUndoTap" />
 
 <view class="tabbar-spacer"></view>
 </view>

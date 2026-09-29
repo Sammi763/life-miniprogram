@@ -12,7 +12,7 @@ const THEMES = [
     tokens: {
       '--bg': '#F3F5F2', '--card': '#FFFFFF', '--surface': '#FAFBF9', '--ink': '#1C2520', '--ink-2': '#78817B', '--line': '#E2E7E1',
       '--accent': '#315C52', '--accent-strong': '#23483F', '--accent-soft': '#E3EEE8', '--accent-wash': '#F0F5F1',
-      '--green': '#39745D', '--green-soft': '#E3F0E8', '--red': '#B95755', '--amber': '#9A7338',
+      '--green': '#39745D', '--green-soft': '#E3F0E8', '--red': '#B95755', '--amber': '#9A7338', '--danger-soft': '#F8EBEA', '--warn-soft': '#F8F0DF',
       '--card-border': 'rgba(210,220,212,.82)', '--shadow-color': 'rgba(31,56,43,.045)', '--pressed-shadow': 'rgba(31,56,43,.09)',
       '--button-shadow': 'rgba(35,72,63,.18)', '--button-shadow-strong': 'rgba(35,72,63,.28)', '--mask-color': 'rgba(17,30,25,.42)', '--sheet-shadow': 'rgba(18,37,29,.12)',
       '--hero-start': '#2E564C', '--hero-end': '#203F38', '--hero-shadow': 'rgba(29,68,58,.20)', '--hero-edit': '#E4F0E8', '--hero-soft': '#D9E9DE', '--hero-soft-ink': '#23483F',
@@ -25,7 +25,7 @@ const THEMES = [
     tokens: {
       '--bg': '#F7F1E8', '--card': '#FFFDF9', '--surface': '#FCF8F1', '--ink': '#302921', '--ink-2': '#83766A', '--line': '#E9DED1',
       '--accent': '#8B5E3C', '--accent-strong': '#6C4429', '--accent-soft': '#F2E4D3', '--accent-wash': '#FAF1E7',
-      '--green': '#527362', '--green-soft': '#E3EFE7', '--red': '#B85C55', '--amber': '#9A7438',
+      '--green': '#527362', '--green-soft': '#E3EFE7', '--red': '#B85C55', '--amber': '#9A7438', '--danger-soft': '#F9ECE6', '--warn-soft': '#F7EDDC',
       '--card-border': 'rgba(224,208,192,.88)', '--shadow-color': 'rgba(80,57,34,.05)', '--pressed-shadow': 'rgba(80,57,34,.10)',
       '--button-shadow': 'rgba(108,68,41,.18)', '--button-shadow-strong': 'rgba(108,68,41,.27)', '--mask-color': 'rgba(42,31,22,.42)', '--sheet-shadow': 'rgba(65,43,25,.13)',
       '--hero-start': '#7A5033', '--hero-end': '#5F3C26', '--hero-shadow': 'rgba(101,62,34,.20)', '--hero-edit': '#F7E9D9', '--hero-soft': '#F2E1D0', '--hero-soft-ink': '#5F3C26',
@@ -38,7 +38,7 @@ const THEMES = [
     tokens: {
       '--bg': '#F1F5F8', '--card': '#FEFFFF', '--surface': '#F8FBFC', '--ink': '#1E2B33', '--ink-2': '#70808A', '--line': '#DCE6EB',
       '--accent': '#2E637D', '--accent-strong': '#234D63', '--accent-soft': '#E0EDF3', '--accent-wash': '#EDF5F8',
-      '--green': '#397263', '--green-soft': '#E1F0EA', '--red': '#B75859', '--amber': '#92723D',
+      '--green': '#397263', '--green-soft': '#E1F0EA', '--red': '#B75859', '--amber': '#92723D', '--danger-soft': '#F8ECEE', '--warn-soft': '#F5F0E0',
       '--card-border': 'rgba(205,218,225,.88)', '--shadow-color': 'rgba(30,58,71,.045)', '--pressed-shadow': 'rgba(30,58,71,.10)',
       '--button-shadow': 'rgba(35,77,99,.18)', '--button-shadow-strong': 'rgba(35,77,99,.28)', '--mask-color': 'rgba(17,35,44,.42)', '--sheet-shadow': 'rgba(25,50,63,.12)',
       '--hero-start': '#315F76', '--hero-end': '#244858', '--hero-shadow': 'rgba(36,72,88,.20)', '--hero-edit': '#E2F0F5', '--hero-soft': '#DCEBF1', '--hero-soft-ink': '#244858',
@@ -51,17 +51,32 @@ const THEMES = [
     tokens: {
       '--bg': '#F6F3F8', '--card': '#FFFEFF', '--surface': '#FBF9FC', '--ink': '#292430', '--ink-2': '#7B7485', '--line': '#E5DFE9',
       '--accent': '#6C557C', '--accent-strong': '#513D62', '--accent-soft': '#EAE3EF', '--accent-wash': '#F3EEF6',
-      '--green': '#467263', '--green-soft': '#E0EEE8', '--red': '#B85A64', '--amber': '#92723F',
+      '--green': '#467263', '--green-soft': '#E0EEE8', '--red': '#B85A64', '--amber': '#92723F', '--danger-soft': '#F8ECEF', '--warn-soft': '#F5EFE2',
       '--card-border': 'rgba(218,210,226,.88)', '--shadow-color': 'rgba(60,45,76,.045)', '--pressed-shadow': 'rgba(60,45,76,.10)',
       '--button-shadow': 'rgba(81,61,98,.18)', '--button-shadow-strong': 'rgba(81,61,98,.28)', '--mask-color': 'rgba(31,24,38,.42)', '--sheet-shadow': 'rgba(47,35,59,.12)',
       '--hero-start': '#65506F', '--hero-end': '#483752', '--hero-shadow': 'rgba(72,55,82,.20)', '--hero-edit': '#EEE6F3', '--hero-soft': '#E9DFEF', '--hero-soft-ink': '#483752',
       '--tab-bg': 'rgba(255,254,255,.97)', '--tab-line': 'rgba(222,215,229,.92)', '--tab-text': '#7D7586', '--tab-selected': '#4C3958', '--tab-selected-bg': '#EAE3EF'
     }
+  },
+  {
+    /* 夜间主题：仅手动切换（不跟随系统），token 键集与其余主题完全一致（theme-night 测试钉住）。
+       原生导航栏前景色随主题切换：浅色主题黑字，夜间白字。 */
+    id: 'night', name: '夜间', detail: '深色护眼', preview: 'linear-gradient(135deg, #22323B 0%, #171B1E 100%)',
+    navigation: '#171B1E',
+    navigationFront: '#ffffff',
+    tokens: {
+      '--bg': '#171B1E', '--card': '#1F2428', '--surface': '#232930', '--ink': '#E7ECEA', '--ink-2': '#8B9793', '--line': '#31383D',
+      '--accent': '#5E9C8B', '--accent-strong': '#7FB5A6', '--accent-soft': '#24332E', '--accent-wash': '#1E2B27',
+      '--green': '#6FB294', '--green-soft': '#1F3029', '--red': '#C97B76', '--amber': '#B99050', '--danger-soft': '#33231F', '--warn-soft': '#332B1E',
+      '--card-border': 'rgba(70,80,86,.72)', '--shadow-color': 'rgba(0,0,0,.20)', '--pressed-shadow': 'rgba(0,0,0,.32)',
+      '--button-shadow': 'rgba(0,0,0,.30)', '--button-shadow-strong': 'rgba(0,0,0,.40)', '--mask-color': 'rgba(0,0,0,.62)', '--sheet-shadow': 'rgba(0,0,0,.42)',
+      '--hero-start': '#22323B', '--hero-end': '#161F26', '--hero-shadow': 'rgba(0,0,0,.35)', '--hero-edit': '#2A3B44', '--hero-soft': '#24343D', '--hero-soft-ink': '#BFD6D0',
+      '--tab-bg': 'rgba(26,30,33,.97)', '--tab-line': 'rgba(60,68,74,.90)', '--tab-text': '#8B9793', '--tab-selected': '#9FD3C4', '--tab-selected-bg': '#24332E'
+    }
   }
 ];
 
 const THEME_MAP = Object.fromEntries(THEMES.map((theme) => [theme.id, theme]));
-let appliedThemeId = '';
 
 function normalizeThemeId(value) {
   return THEME_MAP[value] ? value : DEFAULT_THEME_ID;
@@ -123,12 +138,22 @@ function getThemeOptions(preferredId) {
   }));
 }
 
+/*
+ * 取当前主题的原始 token 值，供 CSS 变量覆盖不到的场景使用：
+ * wx.showModal 的 confirmColor 只接受字面量、Canvas 2D 取色等。
+ */
+function activeTokens(preferredId) {
+  return getTheme(preferredId).tokens;
+}
+
+/* 原生导航栏颜色是页面级的：微信每次页面切换都会回到 app.json 默认配色，
+ * 因此这里绝不能按「主题没变」跳过 —— 每次应用主题都要重设导航栏（跨页测试钉住）。 */
 function applyNativeChrome(theme) {
-  if (appliedThemeId === theme.id || typeof wx === 'undefined') return;
-  appliedThemeId = theme.id;
+  if (typeof wx === 'undefined') return;
   try {
     if (typeof wx.setNavigationBarColor === 'function') {
-      wx.setNavigationBarColor({ frontColor: '#000000', backgroundColor: theme.navigation, animation: { duration: 180, timingFunc: 'easeIn' } });
+      // 前景色只接受 #ffffff / #000000：夜间主题白字，其余黑字
+      wx.setNavigationBarColor({ frontColor: theme.navigationFront || '#000000', backgroundColor: theme.navigation, animation: { duration: 180, timingFunc: 'easeIn' } });
     }
     if (typeof wx.setBackgroundColor === 'function') wx.setBackgroundColor({ backgroundColor: theme.navigation, backgroundColorBottom: theme.navigation });
   } catch (error) { /* older base libraries can safely keep the app.json color */ }
@@ -168,6 +193,7 @@ module.exports = {
   getThemeStyle,
   getThemeData,
   getThemeOptions,
+  activeTokens,
   applyToPage,
   applyToOpenPages,
   selectTheme

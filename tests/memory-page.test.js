@@ -65,7 +65,8 @@ try {
 
   page.removeMemory.call(page, { currentTarget: { dataset: { id: 'old' } } });
   assert.deepStrictEqual(writes.pop(), ['remove', 'memories', 'old'], '删除必须走同步墓碑协议');
-  page.undoDelete.call(page);
+  clearTimeout(page.__undoTimer);
+  page.onUndoTap.call(page);
   assert.deepStrictEqual(writes.pop(), ['upsert', 'memories', store.state.records.memories.old.data, 'old'], '短暂撤销应恢复原记录与原 id');
 } finally {
   store.state.records.memories = originalMemories;

@@ -1,11 +1,14 @@
 const store = require('../../utils/store');
 const sync = require('../../utils/sync');
+const ui = require('../../utils/ui');
 const api = require('../../utils/api');
 const { addDays, derivePlanOccurrences, makeOccurrenceId } = require('../../utils/plan-utils');
 const { buildTodayQueue, chooseFocusTask } = require('../../utils/daily-utils');
-const { buildBillAlerts } = require('../../utils/ledger-utils');
-const { syncTabBar } = require('../../utils/tabbar');
+const habitUtils = require('../../utils/habit-utils');
+const { buildBillAlerts, buildBudgetAdvice } = require('../../utils/ledger-utils');
+const { syncTabBar, attachOverlayWatcher, TAB } = require('../../utils/tabbar');
 const theme = require('../../utils/theme');
+const share = require('../../utils/share');
 
 const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
@@ -25,31 +28,43 @@ Page({
     monthOut: 0, budget: 0, budgetPct: 0,
     habits: [],
     plans: [],
-    shopping: [],
     todayQueue: [],
     focusTask: null,
     billAlerts: [],
     memoryCount: 0,
     recentRecords: [],
+    /* 首次使用（账本/习惯/日程/待买都还没有记录）时突出「三步开始」，不做强制引导 */
+    firstRun: false,
+    overdueCount: 0,
     aiInsight: '今天先从一件小事开始，慢慢来就好。',
     aiInsightLabel: '根据记录整理',
     aiInsightLoading: false,
     aiInsightKey: '',
-    aiConsent: false
+    aiConsent: false,
+    /* 队列行完成中的 key（kind:id）：行先播放划除动画再真正移除 */
+    finishingKey: '',
+    /* 数值型习惯的轻量录入弹层 */
+    valueSheetShow: false,
+    valueForm: { id: '', name: '', unit: '', value: '' }
   },
   unsub: null,
-  currentPlans: [],
   currentQueue: [],
   onLoad() {
     theme.applyToPage(this);
+    // 弹层打开时隐藏悬浮导航（数值录入弹层），与 money/habit 同一套机制
+    attachOverlayWatcher(this);
     this.unsub = store.subscribe(() => this.render());
     this.render();
     this.loadInsight();
   },
-  onShow() { theme.applyToPage(this); syncTabBar(this, 0); this.render(); this.loadInsight(); },
+  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); this.loadInsight(); },
+  onShareAppMessage: share.onShareAppMessage('today'),
+  onShareTimeline: share.onShareTimeline('today'),
   onUnload() {
     this.unsub && this.unsub();
+    clearTimeout(this.__undoTimer);
   },
+  retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() {
     sync.pull().then(() => {
       this.render();
@@ -82,7 +97,6 @@ Page({
     const s = store.state;
     const now = new Date();
     const t = sync.fmtDate(now);
-    const y = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return sync.fmtDate(d); })();
     const month = t.slice(0, 7);
 
     // 本月/今日收支
@@ -115,11 +129,11 @@ Page({
       .map((d) => {
         const e = entries[d.id];
         const val = e ? Number(e.data.value) || 0 : 0;
-        const target = Number(d.data.target) || 1;
+        const target = habitUtils.entryTarget(e, d);
         return {
           id: d.id, name: d.data.name, mode: d.data.mode,
           unit: d.data.unit || '', target,
-          value: val, done: d.data.mode === 'check' ? val >= 1 : val >= target,
+          value: val, done: habitUtils.isEntryDone(e, d),
           text: d.data.mode === 'check' ? (val >= 1 ? '已完成' : '未完成') : val + ' / ' + target + ' ' + (d.data.unit || '')
         };
       });
@@ -145,20 +159,12 @@ Page({
       dateText: item.date === t ? '' : item.date.slice(5) + ' · '
     }));
     plans.sort((a, b) => (a.overdue === b.overdue ? (a.time > b.time ? 1 : -1) : (a.overdue ? -1 : 1)));
-    this.currentPlans = plans;
-
-    // 待买预览（未完成前 3 条）
-    const shopping = Object.values(s.records.shopping)
-      .filter((r) => !r.deletedAt && r.data && !r.data.done)
-      .sort((a, b) => (a.updatedAt > b.updatedAt ? 1 : -1))
-      .slice(0, 3)
-      .map((r) => ({ id: r.id, name: r.data.name }));
 
     const queueSource = { plan: planRecords, habit: Object.values(s.records.habit), shopping: Object.values(s.records.shopping) };
     const todayQueue = buildTodayQueue(queueSource, t).slice(0, 8).map((item) => ({
       ...item,
       kindText: item.kind === 'plan' ? '日程' : item.kind === 'habit' ? '习惯' : '待买',
-      actionText: item.kind === 'habit' ? (item.mode === 'count' ? '+1' : '打卡') : item.kind === 'shopping' ? '买到' : '完成',
+      actionText: item.kind === 'habit' ? (item.mode === 'count' ? '+1' : item.mode === 'value' ? '记录' : '打卡') : item.kind === 'shopping' ? '买到' : '完成',
       pinText: item.pinned ? '取消置顶' : '置顶'
     }));
     const focusTask = chooseFocusTask(todayQueue);
@@ -168,6 +174,12 @@ Page({
     const budgetPct = budget > 0 ? Math.min(100, Math.round((monthOut / budget) * 100)) : 0;
     const habitDone = habits.filter((habit) => habit.done).length;
     const planDone = plans.filter((plan) => plan.done).length;
+    const overdueCount = plans.filter((plan) => plan.overdue && !plan.done).length;
+    /* 首次使用：四个核心记录集合都为空时突出「记一笔 / 建习惯 / 排日程」；任何一条记录出现即消失 */
+    const firstRun = ['money', 'habit', 'plan', 'shopping'].every((coll) =>
+      !Object.values(s.records[coll] || {}).some((record) => !record.deletedAt && record.data));
+    /* 跨模块预算建议（只读）：待买预估 + 本月支出 超预算时提示；不自动改任何状态 */
+    const budgetAdvice = buildBudgetAdvice(settingsRec, s.records.money || {}, s.records.shopping || {}, month);
     const lifeIndex = Math.max(0, Math.min(100, Math.round(45 + (defs.length ? habitDone / defs.length * 35 : 0) + (plans.length ? planDone / plans.length * 20 : 20))));
     const lifeMessage = lifeIndex >= 80 ? '节奏很好，给自己留一点余地。' : lifeIndex >= 60 ? '今天先从一件小事开始，慢慢来就好。' : '不用一次做完，完成一件就很棒。';
     const aiConsent = hasAiConsent();
@@ -198,7 +210,8 @@ Page({
       syncing: s.syncState === 'syncing',
       todayIn: tIn, todayOut: tOut,
       monthOut, budget, budgetPct,
-      habits, plans, shopping, todayQueue, focusTask,
+      habits, plans, todayQueue, focusTask,
+      firstRun, overdueCount, budgetAdvice,
       billAlerts: buildBillAlerts(s.records.accounts || {}, s.records.money || {}, now),
       memoryCount,
       recentRecords: recentRecords.slice(0, 5),
@@ -207,55 +220,38 @@ Page({
       aiInsightLabel: aiConsent ? this.data.aiInsightLabel : '本机整理',
       aiInsightLoading: aiConsent ? this.data.aiInsightLoading : false
     });
+    /* 角标：今日待处理队列条数 */
+    syncTabBar(this, TAB.TODAY, { [TAB.TODAY]: todayQueue.length });
   },
 
   // ---- 交互：改数据 → sync.upsert → store.notify → 各页自渲染 ----
-  onHabitTap(e) {
-    const { id, mode } = e.currentTarget.dataset;
-    const t = sync.fmtDate(new Date());
-    const s = store.state;
-    // 找今日已有打卡
-    let entry = null;
-    for (const r of Object.values(s.records.habit)) {
-      if (!r.deletedAt && r.data && r.data.kind === 'entry' && r.data.habitId === id && r.data.date === t) entry = r;
-    }
-    if (mode === 'check') {
-      const next = entry && Number(entry.data.value) >= 1 ? 0 : 1;
-      sync.upsert('habit', { kind: 'entry', habitId: id, date: t, value: next }, entry && entry.id);
-    } else if (mode === 'count') {
-      const next = (entry ? Number(entry.data.value) || 0 : 0) + 1;
-      sync.upsert('habit', { kind: 'entry', habitId: id, date: t, value: next }, entry && entry.id);
-    } else {
-      wx.showModal({
-        title: '记录数值',
-        editable: true,
-        placeholderText: '输入今日数值',
-        success: (res) => {
-          if (!res.confirm) return;
-          const v = Number(res.content);
-          if (isNaN(v) || v < 0) return;
-          sync.upsert('habit', { kind: 'entry', habitId: id, date: t, value: v }, entry && entry.id);
-        }
-      });
-    }
-  },
-  onPlanToggle(e) {
-    const { id } = e.currentTarget.dataset;
-    const item = this.currentPlans.find((plan) => plan.id === id);
-    if (!item) return;
-    if (item.isVirtual) {
-      sync.upsert('plan', { kind: 'occurrence', seriesId: item.sourceId, date: item.date, done: !item.done, skipped: false }, makeOccurrenceId(item.sourceId, item.date));
-      return;
-    }
-    const record = store.state.records.plan[item.id];
-    if (record && !record.deletedAt) sync.upsert('plan', Object.assign({}, record.data, { done: !item.done, skipped: false }), item.id);
-  },
   onQueueTap(e) {
     const { id, kind } = e.currentTarget.dataset;
+    if (ui.isRepeatedTap(this, 'queue-tap-' + kind + '-' + id, 400)) return;
     const item = this.currentQueue.find((candidate) => candidate.id === id && candidate.kind === kind);
     if (!item) return;
-    if (kind === 'habit') return this.onHabitTap({ currentTarget: { dataset: { id: item.sourceId, mode: item.mode } } });
-    if (kind === 'shopping') {
+    /* 数值型习惯打开轻量录入弹层，其余项先播放划除动画再真正完成 */
+    if (kind === 'habit' && item.mode === 'value') return this.openValueSheet(item);
+    this.setData({ finishingKey: kind + ':' + id });
+    setTimeout(() => {
+      this.completeQueueItem(item);
+      this.setData({ finishingKey: '' });
+      ui.completeFeedback({});
+    }, 220);
+  },
+  completeQueueItem(item) {
+    if (item.kind === 'habit') {
+      const t = sync.fmtDate(new Date());
+      const def = store.state.records.habit[item.sourceId];
+      if (!def || def.deletedAt) return;
+      const existing = habitUtils.findEntry(store.state.records.habit, item.sourceId, t);
+      const current = existing ? Number(existing.data.value) || 0 : 0;
+      const next = item.mode === 'count' ? current + 1 : 1;
+      const w = habitUtils.entryWrite(store.state.records.habit, def, t, next);
+      sync.upsert('habit', w.data, w.id);
+      return;
+    }
+    if (item.kind === 'shopping') {
       const record = store.state.records.shopping[item.sourceId];
       if (record && !record.deletedAt) sync.upsert('shopping', { ...record.data, done: true }, item.sourceId);
       return;
@@ -276,14 +272,41 @@ Page({
     const record = store.state.records[collection][sourceId];
     if (record && !record.deletedAt && record.data) sync.upsert(collection, { ...record.data, pinned: !record.data.pinned }, sourceId);
   },
+
+  openValueSheet(item) {
+    const habit = this.data.habits.find((candidate) => candidate.id === item.sourceId);
+    if (!habit) return;
+    this.setData({ valueSheetShow: true, valueForm: { id: habit.id, name: habit.name, unit: habit.unit, value: String(habit.value || '') } });
+  },
+  closeValueSheet() { this.setData({ valueSheetShow: false }); },
+  noop() {},
+  onValueInput(e) { this.setData({ 'valueForm.value': e.detail.value }); },
+  valueStep(e) {
+    const delta = Number(e.currentTarget.dataset.delta) || 0;
+    const current = Number(this.data.valueForm.value) || 0;
+    this.setData({ 'valueForm.value': String(Math.max(0, current + delta)) });
+  },
+  saveValue() {
+    const form = this.data.valueForm;
+    const value = Number(form.value);
+    if (!Number.isFinite(value) || value < 0) return wx.showToast({ title: '请输入正确的数值', icon: 'none' });
+    if (ui.isRepeatedTap(this, 'today-value-save', 400)) return;
+    const t = sync.fmtDate(new Date());
+    const def = store.state.records.habit[form.id];
+    if (!def || def.deletedAt) return;
+    const w = habitUtils.entryWrite(store.state.records.habit, def, t, value);
+    sync.upsert('habit', w.data, w.id);
+    this.setData({ valueSheetShow: false });
+    ui.completeFeedback({ toast: '已记录' });
+  },
+
   goMoney() { wx.switchTab({ url: '/pages/money/money' }); },
   goHabit() { wx.switchTab({ url: '/pages/habit/habit' }); },
+  goMine() { wx.switchTab({ url: '/pages/mine/mine' }); },
   goMemory() { wx.navigateTo({ url: '/pages/memory/memory?compose=1' }); },
   goPlan() { wx.navigateTo({ url: '/pages/plan/plan' }); },
   goShopping() { wx.navigateTo({ url: '/pages/shopping/shopping' }); },
-  goMedia() { wx.navigateTo({ url: '/pages/media/media' }); },
   goFitness() { wx.navigateTo({ url: '/pages/fitness/fitness' }); },
   goReport() { wx.navigateTo({ url: '/pages/report/report' }); },
-  goReview() { wx.navigateTo({ url: '/pages/review/review' }); },
   goSearch() { wx.navigateTo({ url: '/pages/search/search' }); }
 });

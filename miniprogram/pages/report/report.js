@@ -1,8 +1,11 @@
 const store = require('../../utils/store');
 const sync = require('../../utils/sync');
+const ui = require('../../utils/ui');
 const api = require('../../utils/api');
+const { formatMoney } = require('../../utils/finance');
 const { buildMonthlyReport } = require('../../utils/report-utils');
 const theme = require('../../utils/theme');
+const share = require('../../utils/share');
 
 function hasAiConsent() {
   const setting = store.state.records.settings && store.state.records.settings.app;
@@ -18,6 +21,12 @@ function formatChange(value) {
   return (number > 0 ? '+' : '') + number;
 }
 
+/* 展示用金额：负数把负号放在 ¥ 前（-¥123 而不是 ¥-123） */
+function yuan(value) {
+  const number = Number(value) || 0;
+  return (number < 0 ? '-' : '') + '¥' + formatMoney(Math.abs(number));
+}
+
 Page({
   data: {
     month: '',
@@ -27,11 +36,14 @@ Page({
     finance: { income: 0, expense: 0, balance: 0, budget: 0, budgetUsed: 0, incomeChange: 0, expenseChange: 0, topCategories: [], dailyTrend: [], categoryBudgets: [], overspent: [] },
     life: { habit: { rate: 0 }, plan: { rate: 0 }, weight: { hasData: false }, media: { completed: 0, averageRating: 0 }, memory: { count: 0, days: 0, topTags: [], moods: [] } },
     trend: [],
+    trendExpanded: false,
+    trendTotal: 0,
     summary: '',
     aiSummary: '',
     aiSummaryLabel: '根据记录整理',
     aiSummaryLoading: false,
     aiSummaryKey: '',
+    aiSummaryFaded: false,
     aiConsent: false
   },
   unsub: null,
@@ -43,8 +55,11 @@ Page({
     this.render();
     this.loadAiSummary();
   },
-  onShow() { theme.applyToPage(this); this.render(); this.loadAiSummary(); },
+  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); this.loadAiSummary(); },
+  onShareAppMessage: share.onShareAppMessage('report'),
+  onShareTimeline: share.onShareTimeline('report'),
   onUnload() { this.unsub && this.unsub(); },
+  retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() {
     sync.pull().then(() => {
       this.render();
@@ -65,10 +80,13 @@ Page({
       if (this.data.aiSummaryKey !== month) return;
       const content = String(result && result.content || '').trim();
       if (!content) return;
+      /* 内容到达时先瞬时降透明度再移除，触发一次淡入，避免正文无过渡地整体替换 */
       this.setData({
         aiSummary: content,
-        aiSummaryLabel: result.source === 'ai' || result.source === 'cache' ? 'AI 生成 · 仅你可见' : '根据记录整理'
+        aiSummaryLabel: result.source === 'ai' || result.source === 'cache' ? 'AI 生成 · 仅你可见' : '根据记录整理',
+        aiSummaryFaded: true
       });
+      setTimeout(() => this.setData({ aiSummaryFaded: false }), 30);
     }).catch(() => {
       // 模型不可用时继续展示客户端确定性总结。
     }).finally(() => {
@@ -88,17 +106,36 @@ Page({
     const trend = report.finance.dailyTrend.map((item) => ({
       ...item,
       day: item.date.slice(-2),
+      amountText: formatMoney(item.amount),
       width: Math.max(item.amount ? 8 : 0, Math.round(item.amount * 100 / maxTrend))
     }));
+    /* 趋势降噪：默认只看最近 7 个有支出的日子，可展开全部 */
+    const trendShown = this.data.trendExpanded ? trend : trend.slice(-7);
+    const finance = {
+      ...report.finance,
+      balanceText: yuan(report.finance.balance),
+      incomeText: formatMoney(report.finance.income),
+      expenseText: formatMoney(report.finance.expense),
+      budgetText: formatMoney(report.finance.budget),
+      topCategories: (report.finance.topCategories || []).map((item) => ({ ...item, amountText: formatMoney(item.amount) })),
+      categoryBudgets: (report.finance.categoryBudgets || []).map((item) => ({
+        ...item,
+        spentText: formatMoney(item.spent),
+        budgetText: formatMoney(item.budget),
+        overText: formatMoney(item.over),
+        suggestedText: formatMoney(item.suggested)
+      }))
+    };
     const [year, number] = month.split('-');
     this.setData({
       month,
       monthText: year + ' 年 ' + Number(number) + ' 月',
       canNext: month < monthString(new Date()),
       offline: store.state.syncState === 'offline',
-      finance: report.finance,
+      finance,
       life: report.life,
-      trend,
+      trend: trendShown,
+      trendTotal: trend.length,
       summary: report.summary,
       aiConsent,
       aiSummary: aiConsent ? this.data.aiSummary : report.summary,
@@ -106,6 +143,8 @@ Page({
       aiSummaryLoading: aiConsent ? this.data.aiSummaryLoading : false
     });
   },
+  toggleTrend() { this.setData({ trendExpanded: !this.data.trendExpanded }); this.render(); },
+  goBudget() { wx.switchTab({ url: '/pages/mine/mine' }); },
 
   shiftMonth(offset) {
     const [year, month] = this.data.month.split('-').map(Number);

@@ -2,10 +2,11 @@ const assert = require('assert');
 const { SETTINGS_THEMES, validateRecordData } = require('../server/validation');
 const { pickSettings } = require('../miniprogram/utils/settings-utils');
 
-assert.deepStrictEqual(SETTINGS_THEMES, ['forest', 'paper', 'sky', 'violet'], '服务端主题白名单应与小程序保持一致');
+assert.deepStrictEqual(SETTINGS_THEMES, ['forest', 'paper', 'sky', 'violet', 'night'], '服务端主题白名单应与小程序保持一致（night 为手动夜间主题）');
 assert.strictEqual(validateRecordData('settings', { budget: 3000 }), '', '旧版设置记录必须继续兼容');
 assert.strictEqual(validateRecordData('settings', { budget: 3000, aiConsent: true, theme: 'paper' }), '', 'AI 同意状态和主题应可同步');
 assert.strictEqual(validateRecordData('settings', { aiConsent: false, theme: 'violet' }), '', '关闭 AI 和暮紫主题应可保存');
+assert.strictEqual(validateRecordData('settings', { aiConsent: false, theme: 'night' }), '', '夜间主题应可同步');
 assert.strictEqual(validateRecordData('settings', { theme: 'unknown' }), 'bad_settings', '未知主题必须拒绝');
 assert.strictEqual(validateRecordData('settings', { theme: 'paper', serverUrl: 'http://127.0.0.1:8787' }), 'bad_settings', '设置记录不能写入白名单外字段');
 assert.strictEqual(validateRecordData('settings', { aiConsent: 'true' }), 'bad_settings', 'AI 同意状态必须是布尔值');

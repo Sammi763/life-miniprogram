@@ -1,5 +1,5 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，随记已暂存在本机</text><text bindtap="onPullDownRefresh" style="font-weight:600">重试</text></view>
+<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，随记已暂存在本机</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
 
 <view class="memory-page">
   <view class="memory-head">
@@ -8,10 +8,10 @@
       <view class="memory-title">生活时间线</view>
       <view class="memory-stats"><text class="memory-stats-number">{{total}}</text><text>条记忆</text><text class="memory-stats-divider">·</text><text class="memory-stats-number">{{dayCount}}</text><text>个日子</text></view>
     </view>
-    <view class="memory-search" bindtap="goSearch"><text class="memory-search-icon">⌕</text><text>搜索</text></view>
+    <view class="memory-search" bindtap="goSearch" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><text class="memory-search-icon">⌕</text><text>搜索</text></view>
   </view>
 
-  <view class="memory-hero" bindtap="openComposer" hover-class="record-card-pressed">
+  <view class="memory-hero" bindtap="openComposer" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90">
     <view class="memory-hero-copy">
       <view class="memory-hero-kicker">KEEP THE MOMENT</view>
       <view class="memory-hero-title">把今天收好</view>
@@ -25,13 +25,13 @@
     <view class="memory-search-input"><text class="memory-search-input-icon">⌕</text><input value="{{keyword}}" bindinput="onKeyword" placeholder="搜索正文或标签" maxlength="50" /></view>
     <scroll-view scroll-x="true" class="filter-scroll">
       <view class="filter-line">
-        <view wx:for="{{moods}}" wx:key="key" class="filter-chip {{selectedMood === item.key ? 'filter-chip-on' : ''}}" bindtap="setFilterMood" data-mood="{{item.key}}">{{item.label}}</view>
+        <view wx:for="{{moods}}" wx:key="key" class="filter-chip {{selectedMood === item.key ? 'filter-chip-on' : ''}}" bindtap="setFilterMood" data-mood="{{item.key}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.label}}</view>
       </view>
     </scroll-view>
     <scroll-view wx:if="{{tags.length}}" scroll-x="true" class="filter-scroll tag-scroll">
-      <view class="filter-line"><view wx:for="{{tags}}" wx:key="*this" class="filter-chip {{selectedTag === item ? 'filter-chip-on' : ''}}" bindtap="setFilterTag" data-tag="{{item}}">#{{item}}</view></view>
+      <view class="filter-line"><view wx:for="{{tags}}" wx:key="*this" class="filter-chip {{selectedTag === item ? 'filter-chip-on' : ''}}" bindtap="setFilterTag" data-tag="{{item}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">#{{item}}</view></view>
     </scroll-view>
-    <view wx:if="{{keyword || selectedMood || selectedTag}}" class="clear-filter" bindtap="clearFilters">清除筛选</view>
+    <view wx:if="{{keyword || selectedMood || selectedTag}}" class="clear-filter" bindtap="clearFilters" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">清除筛选</view>
   </view>
 
   <view wx:if="{{groups.length === 0}}" class="memory-empty">
@@ -49,28 +49,32 @@
         <view class="memory-day-copy"><view class="memory-day-label">{{group.label}}</view><view class="sub">{{group.date}} · {{group.items.length}} 条</view></view>
       </view>
       <view class="memory-day-items">
-        <view wx:for="{{group.items}}" wx:key="id" wx:for-item="item" class="card memory-item record-card" hover-class="record-card-pressed" bindtap="openEdit" data-id="{{item.id}}">
+        <view wx:for="{{group.items}}" wx:key="id" wx:for-item="item" class="card memory-item record-card" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openEdit" data-id="{{item.id}}">
           <view class="memory-item-marker"></view>
-          <view class="memory-item-top"><text class="memory-time">{{item.time}}</text><text wx:if="{{item.moodText}}" class="memory-mood">{{item.moodText}}</text><text class="memory-delete" catchtap="removeMemory" data-id="{{item.id}}">删除</text></view>
+          <view class="memory-item-top"><text class="memory-time">{{item.time}}</text><text wx:if="{{item.moodText}}" class="memory-mood">{{item.moodText}}</text><view class="memory-delete" catchtap="removeMemory" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">删除</view></view>
           <view class="memory-content">{{item.content}}</view>
           <view wx:if="{{item.tagsText}}" class="memory-tags">#{{item.tagsText}}</view>
         </view>
       </view>
     </view>
+    <view wx:if="{{hasMore}}" class="memory-more">
+      <view class="memory-more-note">已显示最近 {{shownCount}} 条，共 {{total}} 条</view>
+      <button class="btn btn-ghost memory-more-btn" bindtap="loadMore" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">加载更早的随记</button>
+    </view>
   </view>
 </view>
 
-<view wx:if="{{undoShow}}" class="undo-bar"><text>随记已删除</text><text bindtap="undoDelete">撤销</text></view>
+<undo-bar show="{{undoShow}}" text="随记已删除" bind:undo="onUndoTap" />
 
 <view wx:if="{{composerShow}}" class="mask" bindtap="closeComposer"></view>
 <view wx:if="{{composerShow}}" class="sheet memory-sheet" catchtap="noop">
   <view class="sheet-title">{{form.id ? '编辑随记' : '写下此刻'}}</view>
   <view wx:if="{{restoredDraft}}" class="draft-tip">已恢复上次未保存的草稿</view>
-  <textarea class="memory-editor" value="{{form.content}}" focus="{{composerShow}}" bindinput="onContent" maxlength="1000" placeholder="此刻发生了什么？" auto-height="true" />
+  <textarea class="memory-editor" value="{{form.content}}" focus="{{composerShow}}" bindinput="onContent" maxlength="1000" placeholder="此刻发生了什么？" auto-height="true" cursor-spacing="24" />
   <view class="field memory-time-row"><view class="field-label">发生时间</view><picker mode="date" value="{{form.date}}" bindchange="onDate"><view class="picker-value">{{form.date}}</view></picker><picker mode="time" value="{{form.time}}" bindchange="onTime"><view class="picker-value">{{form.time}}</view></picker></view>
-  <view class="field"><view class="field-label">心情（可选）</view><view class="chips"><view wx:for="{{moods}}" wx:key="key" class="chip {{form.mood === item.key ? 'on' : ''}}" bindtap="setMood" data-mood="{{item.key}}">{{item.label}}</view></view></view>
+  <view class="field"><view class="field-label">心情（可选）</view><view class="chips"><view wx:for="{{moods}}" wx:key="key" class="chip {{form.mood === item.key ? 'on' : ''}}" bindtap="setMood" data-mood="{{item.key}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.label}}</view></view></view>
   <view class="field"><view class="field-label">标签（最多 3 个，以逗号分隔）</view><input value="{{form.tagsInput}}" bindinput="onTags" maxlength="38" placeholder="如：日常，咖啡，散步" /></view>
   <view wx:if="{{tags.length}}" class="recent-tags"><text class="sub">常用：</text><text wx:for="{{tags}}" wx:key="*this" class="recent-tag" bindtap="addTag" data-tag="{{item}}">#{{item}}</text></view>
-  <button class="btn btn-primary" bindtap="saveMemory">明确保存</button>
+  <button class="btn btn-primary" bindtap="saveMemory" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">明确保存</button>
 </view>
 </view>

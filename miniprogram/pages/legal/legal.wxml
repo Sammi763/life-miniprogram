@@ -6,14 +6,20 @@
   </view>
 
   <view class="legal-tabs">
-    <view wx:for="{{documents}}" wx:key="key" class="legal-tab {{active === item.key ? 'active' : ''}}" data-doc="{{item.key}}" bindtap="selectDocument">{{item.tab}}</view>
+    <view wx:for="{{documents}}" wx:key="key" class="legal-tab {{active === item.key ? 'active' : ''}}" data-doc="{{item.key}}" bindtap="selectDocument" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.tab}}</view>
   </view>
 
-  <view class="legal-card" wx:for="{{document.sections}}" wx:key="heading">
+  <scroll-view wx:if="{{document.sections.length > 1}}" scroll-x="true" class="legal-anchor-scroll">
+    <view class="legal-anchor-line">
+      <view wx:for="{{document.sections}}" wx:key="heading" class="legal-anchor" bindtap="jumpToSection" data-index="{{index}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.heading}}</view>
+    </view>
+  </scroll-view>
+
+  <view class="legal-card" wx:for="{{document.sections}}" wx:key="heading" id="section-{{index}}">
     <view class="legal-heading">{{item.heading}}</view>
     <view wx:for="{{item.paragraphs}}" wx:for-item="paragraph" wx:key="*this" class="legal-paragraph">{{paragraph}}</view>
   </view>
 
-  <button wx:if="{{active === 'privacy'}}" class="privacy-contract-btn" bindtap="openWechatPrivacy">查看微信用户隐私保护指引</button>
+  <button wx:if="{{active === 'privacy'}}" class="privacy-contract-btn" bindtap="openWechatPrivacy" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">查看微信用户隐私保护指引</button>
   <view class="legal-footer">版本：发布前核对稿 · 请以实际运营信息完成替换</view>
 </view>

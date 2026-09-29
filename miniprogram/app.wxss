@@ -17,6 +17,8 @@ page {
   --red: #B95755;
   --amber: #9A7338;
   --danger: var(--red);
+  --danger-soft: #F8EBEA;
+  --warn-soft: #F8F0DF;
   --card-border: rgba(210,220,212,.82);
   --shadow-color: rgba(31,56,43,.045);
   --pressed-shadow: rgba(31,56,43,.09);
@@ -44,8 +46,11 @@ page {
   box-sizing: border-box;
 }
 
-/* 自定义底部导航悬浮在内容之上，四个 Tab 页在 WXML 末尾放置此安全留白。 */
-.tabbar-spacer { height: 190rpx; }
+/* 自定义底部导航悬浮在内容之上，四个 Tab 页在 WXML 末尾放置此安全留白。
+   留白高度必须 ≥ 悬浮导航自身高度（112rpx 胶囊 + 16rpx 下边距 + 底部安全区），
+   否则滚到底时最后一张卡片会被导航条压住。实测（iPhone 12/13 模拟器，安全区 34px）：
+   旧值写死 190rpx≈98px，而导航条实际占 112+16rpx+34px≈100.6px，末卡片被压 2.3px。 */
+.tabbar-spacer { height: calc(152rpx + env(safe-area-inset-bottom)); }
 .theme-page { min-height:100vh; background:var(--bg); color:var(--ink); }
 
 .card {
@@ -57,8 +62,13 @@ page {
   box-shadow: 0 12rpx 34rpx var(--shadow-color);
 }
 
-.record-card { transition: transform 150ms ease, background-color 150ms ease, box-shadow 150ms ease; }
+.record-card { transition: transform 90ms ease, background-color 90ms ease, box-shadow 90ms ease; }
 .record-card-pressed { transform: scale(.988); background-color: var(--surface); box-shadow: 0 10rpx 24rpx var(--pressed-shadow); }
+
+/* 非卡片类可点元素（悬浮按钮、列表行、设置行、箭头等）的统一按压反馈。
+   微信 view 默认 hover-class="none"，必须在模板上显式指定 hover-class 才会生效。 */
+.tap-row { transition: opacity 90ms ease; }
+.tap-pressed { opacity:.65; }
 
 .text-avatar { display:flex; align-items:center; justify-content:center; border-radius:50%; font-weight:700; letter-spacing:1rpx; }
 .avatar-tone-0 { background:#E8E0CF; color:#775A26; }
@@ -73,7 +83,7 @@ page {
 .h1 { font-size:42rpx; font-weight:700; letter-spacing:.4rpx; }
 .sub { color:var(--ink-2); font-size:24rpx; }
 
-.btn { min-height:86rpx; display:flex; align-items:center; justify-content:center; border-radius:18rpx; font-size:29rpx; font-weight:600; letter-spacing:.4rpx; }
+.btn { min-height:86rpx; display:flex; align-items:center; justify-content:center; border-radius:18rpx; font-size:29rpx; font-weight:600; letter-spacing:.4rpx; transition:opacity 90ms ease; }
 .btn::after { border:none; }
 .btn-primary { background:linear-gradient(135deg, var(--accent), var(--accent-strong)); color:#fff; box-shadow:0 10rpx 20rpx var(--button-shadow); }
 .btn-ghost { background:var(--accent-soft); color:var(--accent); }
@@ -83,15 +93,43 @@ page {
 .chip { padding:10rpx 22rpx; border-radius:999rpx; background:var(--surface); border:1rpx solid var(--line); color:var(--ink-2); font-size:24rpx; line-height:1.4; }
 .chip.on { background:var(--accent); border-color:var(--accent); color:#fff; }
 
-.banner { margin:20rpx 24rpx 0; padding:18rpx 24rpx; border-radius:18rpx; background:#F8F0DF; color:var(--amber); font-size:24rpx; display:flex; justify-content:space-between; align-items:center; }
+.banner { margin:20rpx 24rpx 0; padding:18rpx 24rpx; border-radius:18rpx; background:var(--warn-soft); color:var(--amber); font-size:24rpx; display:flex; justify-content:space-between; align-items:center; }
+.banner-action { font-weight:600; padding:6rpx 10rpx; margin:-6rpx -10rpx; }
+/* 需要用户处理但不阻塞使用的提示（本机缓存写入失败、写入被服务端拒绝等） */
+.notice-warn { margin-top:14rpx; padding:16rpx 20rpx; border-radius:16rpx; background:var(--danger-soft); color:var(--red); font-size:23rpx; line-height:1.65; }
+/* 带操作按钮的警示条：文案与按钮左右分栏，按钮不换行、不抢走整行的点击热区 */
+.notice-warn-row { display:flex; align-items:center; gap:16rpx; }
+.notice-warn-row .notice-text { flex:1; min-width:0; }
+.notice-warn-row .notice-action { flex:none; font-weight:600; font-size:24rpx; padding:8rpx 20rpx; border-radius:999rpx; background:rgba(185,87,85,.12); }
 .money-in { color:var(--green); }
 .money-out { color:var(--red); }
 
-.fab { position:fixed; right:36rpx; bottom:calc(44rpx + env(safe-area-inset-bottom)); width:104rpx; height:104rpx; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:54rpx; font-weight:300; box-shadow:0 14rpx 30rpx var(--button-shadow-strong); }
+.fab { position:fixed; right:36rpx; bottom:calc(44rpx + env(safe-area-inset-bottom)); width:104rpx; height:104rpx; border-radius:50%; background:var(--accent); color:#fff; display:flex; align-items:center; justify-content:center; font-size:54rpx; font-weight:300; box-shadow:0 14rpx 30rpx var(--button-shadow-strong); transition:transform 90ms ease, opacity 90ms ease; }
+.fab-pressed { transform:scale(.92); opacity:.9; }
 
-.mask { position:fixed; inset:0; background:var(--mask-color); z-index:9; }
-.sheet { position:fixed; left:0; right:0; bottom:0; background:var(--bg); border-radius:34rpx 34rpx 0 0; padding:36rpx 32rpx calc(40rpx + env(safe-area-inset-bottom)); z-index:10; box-shadow:0 -10rpx 36rpx var(--sheet-shadow); }
+/*
+ * 弹层必须盖住悬浮导航与悬浮按钮。
+ * custom-tab-bar 的 .tabbar-shell 是 z-index:100，pages/money|habit 的 .fab 是 101；
+ * 旧值 mask:9 / sheet:10 全都低于它们，于是弹层底部被压在导航条之下 ——
+ * 实测（iPhone 12/13 模拟器）「记一笔」的「保存」按钮落在 [655,699]，
+ * 而 tabbar 是 [653,753]，按钮 100% 被遮住：用户能打开弹层、能输入，却点不到保存。
+ * 遮罩同理：低于导航条时，弹层开着还能点到 Tab 直接跳走。
+ */
+.mask { position:fixed; inset:0; background:var(--mask-color); z-index:199; }
+/* max-height + 可滚动：底部弹层内容较长或键盘弹起时，输入框仍能被滚进可视区。
+   各页 sheet 高度已统一在此（86vh），不要在页面 wxss 里再覆盖。
+   注意：不要给 .mask/.sheet 加 CSS animation —— 真机（iOS WebView）上
+   fixed 全屏遮罩 + keyframes 动画出现过「切换页面后点击事件永久失效、只能重启」
+   的卡死（2026-09 用户实测），排查期间已撤掉入场动画；要用动效需先在真机充分验证。 */
+.sheet { position:fixed; left:0; right:0; bottom:0; max-height:86vh; overflow-y:auto; background:var(--bg); border-radius:34rpx 34rpx 0 0; padding:36rpx 32rpx calc(40rpx + env(safe-area-inset-bottom)); z-index:200; box-shadow:0 -10rpx 36rpx var(--sheet-shadow); -webkit-overflow-scrolling:touch; }
 .sheet-title { font-size:33rpx; font-weight:700; text-align:center; margin-bottom:30rpx; }
+/* 弹层里的表单行（label + switch）：原先 fitness/plan/shopping 各抄一份、habit 漏抄
+   导致布局退化，现收编为公共类。 */
+.switch-row { display:flex; align-items:center; justify-content:space-between; margin:12rpx 0 28rpx; }
+/* picker 的选中值外壳：与 .field picker 同规格，供 picker 内层 view 使用 */
+.picker-value { background:var(--surface); border:1rpx solid var(--line); border-radius:16rpx; min-height:88rpx; padding:0 24rpx; display:flex; align-items:center; font-size:31rpx; }
+/* 列表行内的删除文字按钮：给足上下 padding 保证触控热区 */
+.delete-action { color:var(--ink-2); font-size:22rpx; padding:12rpx 0 12rpx 16rpx; }
 
 .field { margin-bottom:24rpx; }
 .field-label { font-size:24rpx; color:var(--ink-2); margin-bottom:12rpx; }

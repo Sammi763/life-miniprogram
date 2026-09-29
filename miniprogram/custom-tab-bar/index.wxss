@@ -1,8 +1,17 @@
-.tabbar-shell { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; padding: 0 24rpx calc(16rpx + env(safe-area-inset-bottom)); pointer-events: none; }
+.tabbar-shell { position: fixed; left: 0; right: 0; bottom: 0; z-index: 100; padding: 0 24rpx calc(16rpx + env(safe-area-inset-bottom)); pointer-events: none; transition: opacity 160ms ease, transform 160ms ease; }
 .tabbar { height: 112rpx; padding: 10rpx; box-sizing: border-box; display: flex; align-items: stretch; gap: 8rpx; border: 1rpx solid var(--tab-line, rgba(210,220,212,.88)); border-radius: 30rpx; background: var(--tab-bg, rgba(255,255,255,.96)); box-shadow: 0 16rpx 42rpx var(--button-shadow-strong, rgba(23,49,38,.16)); pointer-events: auto; }
-.tab-item { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 22rpx; color: var(--tab-text, #7A827D); transition: background-color 140ms ease, color 140ms ease, transform 140ms ease; }
+/*
+ * 弹层打开时隐藏导航（见 index.js 的 hidden 说明）。
+ * 用 opacity + translateY 而不是 display:none，是为了保留一点过渡；
+ * 必须把 .tabbar 上的 pointer-events:auto 一并关掉，否则隐藏后仍能点到透明区域。
+ */
+.tabbar-shell.tabbar-hidden { opacity: 0; transform: translateY(120%); }
+.tabbar-shell.tabbar-hidden .tabbar { pointer-events: none; }
+.tab-item { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 22rpx; color: var(--tab-text, #7A827D); transition: background-color 90ms ease, color 90ms ease, transform 90ms ease; }
 .tab-item.is-selected { color: var(--tab-selected, #203F38); background: var(--tab-selected-bg, #E3EEE8); }
 .tab-item-pressed { transform: scale(.96); }
-.tab-icon { width: 38rpx; height: 38rpx; display: flex; align-items: center; justify-content: center; font-size: 22rpx; line-height: 1; border: 1rpx solid currentColor; border-radius: 12rpx; }
+.tab-icon { position: relative; width: 38rpx; height: 38rpx; display: flex; align-items: center; justify-content: center; font-size: 22rpx; line-height: 1; border: 1rpx solid currentColor; border-radius: 12rpx; }
 .tab-item.is-selected .tab-icon { color: #FFF; border-color: var(--accent, #315C52); background: var(--accent, #315C52); }
+/* 角标：挂在图标右上角，红色计数 */
+.tab-badge { position: absolute; top: -14rpx; right: -22rpx; min-width: 28rpx; height: 28rpx; box-sizing: border-box; padding: 0 7rpx; border-radius: 999rpx; background: var(--red, #B95755); color: #FFF; font-size: 18rpx; line-height: 28rpx; font-weight: 600; text-align: center; }
 .tab-text { margin-top: 5rpx; font-size: 21rpx; line-height: 1.2; font-weight: 500; }

@@ -1,7 +1,7 @@
 <view class="theme-page" style="{{themeStyle}}">
 <view wx:if="{{offline}}" class="banner">
   <text>云端暂不可用，改动已暂存本机</text>
-  <text bindtap="onPullDownRefresh" style="font-weight:600">重试</text>
+  <view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view>
 </view>
 
 <view class="summary card">
@@ -16,12 +16,12 @@
 
 <view class="calendar card">
   <view class="calendar-head">
-    <text class="calendar-arrow" bindtap="previousWeek">‹</text>
-    <view class="calendar-period" bindtap="goToday">{{weekLabel}}<text class="today-link"> 今天</text></view>
-    <text class="calendar-arrow" bindtap="nextWeek">›</text>
+    <view class="calendar-arrow" bindtap="previousWeek" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">‹</view>
+    <view class="calendar-period" bindtap="goToday" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{weekLabel}}<text class="today-link"> 今天</text></view>
+    <view class="calendar-arrow" bindtap="nextWeek" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">›</view>
   </view>
   <view class="week-grid">
-    <view wx:for="{{weekDays}}" wx:key="date" class="week-day {{item.isSelected ? 'week-day-selected' : ''}}" bindtap="selectDay" data-date="{{item.date}}">
+    <view wx:for="{{weekDays}}" wx:key="date" class="week-day {{item.isSelected ? 'week-day-selected' : ''}}" bindtap="selectDay" data-date="{{item.date}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
       <text class="week-name">周{{item.weekday}}</text>
       <text class="week-number {{item.isToday ? 'week-number-today' : ''}}">{{item.day}}</text>
       <view class="week-dot {{item.total ? 'week-dot-on' : ''}}"><text wx:if="{{item.total}}">{{item.done}}/{{item.total}}</text></view>
@@ -31,24 +31,25 @@
 
 <view class="section-title"><text>{{selectedLabel}}</text><text class="sub">{{items.length}} 项</text></view>
 <view wx:if="{{items.length === 0}}" class="card"><view class="empty">这天还没有安排，给自己留一点空间吧</view></view>
-<view wx:for="{{items}}" wx:key="id" wx:for-item="item" class="card plan-row record-card {{item.overdue ? 'row-overdue' : ''}} {{item.skipped ? 'row-skipped' : ''}}" hover-class="record-card-pressed">
-  <view class="plan-check {{item.done ? 'plan-check-on' : ''}} {{item.skipped ? 'plan-check-skip' : ''}}" bindtap="toggle" data-id="{{item.id}}">{{item.skipped ? '—' : '✓'}}</view>
-  <view class="plan-content" bindtap="openEdit" data-id="{{item.id}}">
+<view wx:for="{{items}}" wx:key="id" wx:for-item="item" class="card plan-row record-card {{item.overdue ? 'row-overdue' : ''}} {{item.skipped ? 'row-skipped' : ''}}" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90">
+  <view class="plan-check {{item.done ? 'plan-check-on' : ''}} {{item.skipped ? 'plan-check-skip' : ''}}" bindtap="toggle" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.skipped ? '—' : '✓'}}</view>
+  <view class="plan-content" bindtap="openEdit" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
     <view class="plan-title {{item.done || item.skipped ? 'plan-done' : ''}}">{{item.title}}</view>
     <view class="sub">{{item.timeText}}<text wx:if="{{item.repeatText}}" class="repeat-tag">{{item.repeatText}}</text><text wx:if="{{item.reminderText}}" class="reminder-tag">{{item.reminderText}}</text><text wx:if="{{item.overdue}}" class="overdue-tag">已逾期</text><text wx:if="{{item.skipped}}" class="skip-tag">已跳过</text></view>
   </view>
-  <view class="more-action" bindtap="more" data-id="{{item.id}}">···</view>
+  <view class="more-action" bindtap="more" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">···</view>
 </view>
 
-<view class="fab" bindtap="openAdd">＋</view>
+<view class="fab" hover-class="fab-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openAdd">＋</view>
 
 <view wx:if="{{sheetShow}}" class="mask" bindtap="closeSheet"></view>
 <view wx:if="{{sheetShow}}" class="sheet" catchtap="noop">
   <view class="sheet-title">{{form.id ? '编辑日程' : '新增日程'}}</view>
   <view class="field">
     <view class="field-label">标题</view>
-    <input value="{{form.title}}" bindinput="onTitle" maxlength="30" placeholder="如：晚上散步 20 分钟" />
+    <input value="{{form.title}}" bindinput="onTitle" maxlength="30" placeholder="如：晚上散步 20 分钟" confirm-type="next" cursor-spacing="24" />
   </view>
+  <view wx:if="{{form.sourceKind === 'series'}}" class="series-hint">这是重复日程：修改会应用到整个系列；只想跳过某一天，用列表里的「··· → 跳过当天」。</view>
   <view class="field">
     <view class="field-label">{{form.sourceKind === 'series' ? '开始日期' : '日期'}}</view>
     <picker mode="date" value="{{form.date}}" bindchange="onDate"><view class="picker-value">{{form.date}}</view></picker>
@@ -56,20 +57,31 @@
   <view class="field time-field">
     <view class="field-label">时间（可空）</view>
     <picker mode="time" value="{{form.time}}" bindchange="onTime"><view class="picker-value">{{form.time || '不设置时间'}}</view></picker>
-    <text wx:if="{{form.time}}" class="clear-time" bindtap="clearTime">清除</text>
+    <view wx:if="{{form.time}}" class="clear-time" bindtap="clearTime" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">清除</view>
   </view>
   <view class="field">
     <view class="field-label">重复</view>
     <view class="repeat-options">
-      <view class="repeat-option {{form.repeat === 'none' ? 'repeat-option-on' : ''}}" bindtap="setRepeat" data-repeat="none">不重复</view>
-      <view class="repeat-option {{form.repeat === 'daily' ? 'repeat-option-on' : ''}}" bindtap="setRepeat" data-repeat="daily">每天</view>
-      <view class="repeat-option {{form.repeat === 'weekly' ? 'repeat-option-on' : ''}}" bindtap="setRepeat" data-repeat="weekly">每周</view>
+      <view class="repeat-option {{form.repeat === 'none' ? 'repeat-option-on' : ''}}" bindtap="setRepeat" data-repeat="none" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">不重复</view>
+      <view class="repeat-option {{form.repeat === 'daily' ? 'repeat-option-on' : ''}}" bindtap="setRepeat" data-repeat="daily" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">每天</view>
+      <view class="repeat-option {{form.repeat === 'weekly' ? 'repeat-option-on' : ''}}" bindtap="setRepeat" data-repeat="weekly" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">每周</view>
+      <view class="repeat-option {{form.repeat === 'workdays' ? 'repeat-option-on' : ''}}" bindtap="setRepeat" data-repeat="workdays" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">工作日</view>
+      <view class="repeat-option {{form.repeat === 'monthly' ? 'repeat-option-on' : ''}}" bindtap="setRepeat" data-repeat="monthly" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">每月</view>
+    </view>
+    <view wx:if="{{form.repeat === 'monthly'}}" class="field monthly-day-field">
+      <view class="field-label">每月几号</view>
+      <picker mode="selector" range="{{monthlyDayOptions}}" value="{{form.repeatDay ? form.repeatDay - 1 : 0}}" bindchange="onRepeatDay">
+        <view class="picker-value">每月 {{form.repeatDay}} 号</view>
+      </picker>
+      <view class="sub">当月没有该日期（如 31 号遇 30 天月）时当月跳过；工作日按周一至周五计算，不含法定节假日调休。</view>
     </view>
   </view>
   <view class="switch-row"><view><view>置顶到今日待处理</view><view class="sub">优先出现在今日首页</view></view><switch checked="{{form.pinned}}" color="{{themeAccent}}" bindchange="onPinned" /></view>
-  <view wx:if="{{form.sourceKind !== 'series'}}" class="switch-row"><text>已完成</text><switch checked="{{form.done}}" color="#39745D" bindchange="onDone" /></view>
+  <view wx:if="{{form.sourceKind !== 'series'}}" class="switch-row"><text>已完成</text><switch checked="{{form.done}}" color="{{themeAccent}}" bindchange="onDone" /></view>
   <view wx:if="{{form.repeat === 'none' && form.time && reminder.enabled && !form.done}}" class="switch-row reminder-switch"><view><view>到时提醒</view><view class="sub">保存后可选择是否订阅一次提醒</view></view><switch checked="{{form.remind}}" color="{{themeAccent}}" bindchange="onReminder" /></view>
   <view wx:if="{{form.repeat !== 'none'}}" class="sub repeat-note">重复事项在应用内展示；微信服务通知仅用于你主动授权的单次日程。</view>
-  <button class="btn btn-primary" loading="{{saving}}" bindtap="save">保存</button>
+  <button class="btn btn-primary" loading="{{saving}}" bindtap="save" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">保存</button>
 </view>
+
+<undo-bar show="{{undoShow}}" text="{{undoText}}" bind:undo="onUndoTap" />
 </view>

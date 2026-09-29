@@ -34,4 +34,28 @@ function searchAll(source, options) {
   return output;
 }
 
-module.exports = { searchAll };
+/*
+ * 关键词命中分段：把文本切成 [{text, hit}] 供 WXML 分段着色。
+ * 大小写不敏感；无关键词时整体作为一段未命中文本。
+ */
+function splitHighlight(text, keyword) {
+  const value = String(text || '');
+  const target = String(keyword || '').trim().toLocaleLowerCase();
+  if (!value || !target) return [{ text: value, hit: false }];
+  const lower = value.toLocaleLowerCase();
+  const segments = [];
+  let index = 0;
+  while (index < value.length) {
+    const found = lower.indexOf(target, index);
+    if (found < 0) {
+      segments.push({ text: value.slice(index), hit: false });
+      break;
+    }
+    if (found > index) segments.push({ text: value.slice(index, found), hit: false });
+    segments.push({ text: value.slice(found, found + target.length), hit: true });
+    index = found + target.length;
+  }
+  return segments.filter((segment) => segment.text);
+}
+
+module.exports = { searchAll, splitHighlight };

@@ -1,5 +1,14 @@
 # 复制到 /etc/caddy/Caddyfile 前，必须将 api.example.com 改成已备案且已解析的正式域名。
 # Caddy 会自动签发和续期 HTTPS 证书；/ws 的 WebSocket Upgrade 会自动透传。
+#
+# ⚠️ 访问日志：Caddy v2 默认【不】记录访问日志，必须显式写 log 才会启用。
+#    但小程序端 /ws 的登录令牌是走 URL query 传递的（miniprogram/utils/sync.js 里
+#    connectSocket 的 url 带 ?token=）。一旦在此站点下加了 `log` 指令，完整 URI
+#    会被写入 stderr/journald，令牌即落盘。若确需访问日志，必须同时过滤掉 query，
+#    例如：log { format filter { request>uri query { delete token } } }
+#    或直接 log { output discard }（丢弃访问日志）。
+#    长期方案是把令牌从 URL 移到 WebSocket 握手 header（wx.connectSocket 支持 header，
+#    Caddy reverse_proxy 默认透传所有请求头，服务端可优先读 Authorization）。
 
 api.example.com {
   encode zstd gzip

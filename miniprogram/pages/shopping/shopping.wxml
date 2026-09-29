@@ -1,33 +1,56 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，改动已暂存本机</text><text bindtap="onPullDownRefresh" style="font-weight:600">重试</text></view>
+<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，改动已暂存本机</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
 
 <view class="card shopping-summary">
   <view><view class="sub">待买</view><view class="summary-num">{{total}} <text>件</text></view></view>
-  <view><view class="sub">已买预估合计</view><view class="summary-num">¥{{completedAmount}}</view></view>
-  <view class="clear-done" bindtap="clearDone">清空已买</view>
+  <view><view class="sub">已买</view><view class="summary-num">{{completedCount}} <text>件 · ¥{{completedAmountText}}</text></view></view>
+  <view class="clear-done" bindtap="clearDone" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">清空已买</view>
 </view>
 
 <view wx:if="{{items.length === 0}}" class="card"><view class="empty">清单还是空的，想买什么就记下来</view></view>
-<view wx:for="{{items}}" wx:key="id" class="card shopping-item {{item.done ? 'shopping-done' : ''}}">
-  <view class="shopping-check {{item.done ? 'shopping-check-on' : ''}}" bindtap="toggle" data-id="{{item.id}}">✓</view>
-  <view class="shopping-main record-card" hover-class="record-card-pressed" bindtap="openEdit" data-id="{{item.id}}">
+
+<view wx:for="{{pendingItems}}" wx:key="id" class="card shopping-item">
+  <view class="shopping-check" bindtap="toggle" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">✓</view>
+  <view class="shopping-main record-card" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openEdit" data-id="{{item.id}}">
     <view class="shopping-name">{{item.name}}</view>
     <view wx:if="{{item.note || item.priceText}}" class="sub">{{item.note}}<text wx:if="{{item.priceText}}">{{item.note ? ' · ' : ''}}{{item.priceText}}</text></view>
   </view>
-  <view wx:if="{{item.link}}" class="link-action" catchtap="copyLink" data-link="{{item.link}}">链接</view>
-  <view class="delete-action" catchtap="remove" data-id="{{item.id}}">删除</view>
+  <view wx:if="{{item.link}}" class="link-action" catchtap="copyLink" data-link="{{item.link}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">链接</view>
+  <view class="delete-action" catchtap="remove" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">删除</view>
 </view>
 
-<view class="fab" bindtap="openAdd">＋</view>
+<block wx:if="{{completedCount}}">
+  <view class="done-group-head tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="toggleDoneGroup">
+    <text>已买 · {{completedCount}} 件</text><text class="done-group-arrow {{showDone ? '' : 'folded'}}">›</text>
+  </view>
+  <block wx:if="{{showDone}}">
+    <view wx:for="{{doneItems}}" wx:key="id" class="card shopping-item shopping-done">
+      <view class="shopping-check shopping-check-on" bindtap="toggle" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">✓</view>
+      <view class="shopping-main record-card" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openEdit" data-id="{{item.id}}">
+        <view class="shopping-name">{{item.name}}</view>
+        <view wx:if="{{item.note || item.priceText}}" class="sub">{{item.note}}<text wx:if="{{item.priceText}}">{{item.note ? ' · ' : ''}}{{item.priceText}}</text></view>
+      </view>
+      <view wx:if="{{item.link}}" class="link-action" catchtap="copyLink" data-link="{{item.link}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">链接</view>
+      <view class="delete-action" catchtap="remove" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">删除</view>
+    </view>
+  </block>
+</block>
+
+<view class="fab" hover-class="fab-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openAdd">＋</view>
 <view wx:if="{{sheetShow}}" class="mask" bindtap="closeSheet"></view>
 <view wx:if="{{sheetShow}}" class="sheet" catchtap="noop">
   <view class="sheet-title">{{form.id ? '编辑物品' : '新增物品'}}</view>
-  <view class="field"><view class="field-label">名称</view><input value="{{form.name}}" bindinput="onName" maxlength="30" placeholder="如：咖啡豆" /></view>
-  <view class="field"><view class="field-label">备注</view><input value="{{form.note}}" bindinput="onNote" maxlength="50" placeholder="可不填" /></view>
-  <view class="field"><view class="field-label">预估价格</view><input type="digit" value="{{form.price}}" bindinput="onPrice" placeholder="可不填" /></view>
-  <view class="field"><view class="field-label">商品链接</view><input value="{{form.link}}" bindinput="onLink" maxlength="300" placeholder="可复制的链接" /></view>
-  <view class="switch-row"><text>已买</text><switch checked="{{form.done}}" color="#39745D" bindchange="onDone" /></view>
-  <view class="switch-row"><view><view>置顶到今日待处理</view><view class="sub">优先出现在今日首页</view></view><switch checked="{{form.pinned}}" color="{{themeAccent}}" bindchange="onPinned" /></view>
-  <button class="btn btn-primary" bindtap="save">保存</button>
+  <view class="field"><view class="field-label">名称</view><input value="{{form.name}}" bindinput="onName" maxlength="30" placeholder="如：咖啡豆" confirm-type="next" cursor-spacing="24" /></view>
+  <view class="field"><view class="field-label">预估价格</view><input type="digit" value="{{form.price}}" bindinput="onPrice" placeholder="可不填" confirm-type="next" cursor-spacing="24" /></view>
+  <view class="field"><view class="field-label">备注</view><input value="{{form.note}}" bindinput="onNote" maxlength="50" placeholder="可不填" confirm-type="done" cursor-spacing="24" /></view>
+  <view class="more-toggle tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="toggleAdvanced">{{advanced ? '收起更多选项' : '更多选项（链接 / 已买 / 置顶）'}}</view>
+  <block wx:if="{{advanced}}">
+    <view class="field"><view class="field-label">商品链接</view><view class="link-input-row"><input value="{{form.link}}" bindinput="onLink" maxlength="300" placeholder="可复制的链接" confirm-type="done" cursor-spacing="24" /><view class="paste-btn tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="pasteLink">粘贴</view></view></view>
+    <view class="switch-row"><text>已买</text><switch checked="{{form.done}}" color="{{themeAccent}}" bindchange="onDone" /></view>
+    <view class="switch-row"><view><view>置顶到今日待处理</view><view class="sub">优先出现在今日首页</view></view><switch checked="{{form.pinned}}" color="{{themeAccent}}" bindchange="onPinned" /></view>
+  </block>
+  <button class="btn btn-primary" disabled="{{saving}}" bindtap="save" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{saving ? '保存中…' : '保存'}}</button>
 </view>
+
+<undo-bar show="{{undoShow}}" text="{{undoText}}" bind:undo="onUndoTap" />
 </view>

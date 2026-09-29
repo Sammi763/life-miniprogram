@@ -60,11 +60,15 @@ function applyChanges(changes) {
 }
 
 // ---------- 写入（乐观更新 + 队列） ----------
-function upsert(collection, data, id) {
+function upsert(collection, data, id, options) {
   const rid = id || ('u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
-  const updatedAt = Date.now();
+  // options.updatedAt 供需要固定时间戳的写入使用（如导入恢复）；默认仍取当前时钟。
+  const updatedAt = options && Number(options.updatedAt) > 0 ? Number(options.updatedAt) : Date.now();
   store.applyLocalUpsert(collection, { id: rid, data, updatedAt });
-  store.enqueue({ type: 'put', collection, id: rid, data, updatedAt });
+  const queued = { type: 'put', collection, id: rid, data, updatedAt };
+  // createOnly：导入恢复语义 —— 服务端仅在该记录不存在时创建，已存在（存活或墓碑）以云端为准
+  if (options && options.createOnly) queued.createOnly = true;
+  store.enqueue(queued);
   store.notify();
   scheduleFlush();
   return rid;
@@ -82,6 +86,20 @@ function remove(collection, id) {
 function scheduleFlush() {
   clearTimeout(flushTimer);
   flushTimer = setTimeout(() => { flush().catch(() => {}); }, 800);
+}
+
+/*
+ * 服务端明确拒绝（4xx）区别于传输失败：这条写入重发多少次都不会成功。
+ * 旧实现把它当传输失败处理 —— 保留队首 + 15 秒后再冲。而 flush() 是严格 FIFO（只看 q[0]），
+ * 于是一条被永久拒绝的写入会永久堵住整个队列，并且每 15 秒往控制台打一次同样的错误
+ * （实测 PUT settings/app 因服务端旧版本不认 aiConsent 返回 422，3 分钟内重发 15 次、
+ * 「我的 → 待同步」永不归零）。
+ * 例外：401 是登录态失效（重新登录后可能成功）、408/429 本身是暂时性错误，都保留重试语义。
+ */
+function isPermanentRejection(error) {
+  const status = Number(error && error.statusCode) || 0;
+  if (status < 400 || status >= 500) return false;
+  return status !== 401 && status !== 408 && status !== 429;
 }
 
 function flush() {
@@ -102,20 +120,38 @@ function flush() {
     const item = q[0];
     if (!item) { flushLock = false; store.setSyncState('idle'); settle(); return; }
     const p = item.type === 'put'
-      ? api.apiPut(item.collection, item.id, item.data, item.updatedAt)
+      ? api.apiPut(item.collection, item.id, item.data, item.updatedAt, item.createOnly)
       : api.apiDelete(item.collection, item.id, item.updatedAt);
     p.then((res) => {
-      // 服务端拒绝旧写入：以服务端为准回写本地
+      // 服务端拒绝旧写入：以服务端为准回写本地。
+      // reason=exists（导入恢复冲突）：服务端现状是权威 —— 云端已有的存活记录/墓碑必须原样覆盖本地，
+      // 不能走 LWW（本地导入写入的 updatedAt 更新，普通合并会错误地保住导入值）。
       if (res && res.applied === false && res.record) {
-        store.applyLocalUpsert(item.collection, res.record);
+        if (res.reason === 'exists') store.forceApplyServer(item.collection, res.record);
+        else store.applyLocalUpsert(item.collection, res.record);
       }
       q.shift();
       store.persist();
       store.setSyncState('idle');
       step();
     }).catch((error) => {
+      if (isPermanentRejection(error)) {
+        /*
+         * 丢弃队首并继续冲刷后面的写入。
+         * 本地记录保留用户填的值（不静默回滚），把拒绝原因记进 store 由「我的」页提示并可手动重试。
+         */
+        q.shift();
+        store.recordRejectedWrite({
+          item,
+          statusCode: Number(error && error.statusCode) || 0,
+          code: (error && error.code) || ''
+        });
+        store.persist();
+        step();
+        return;
+      }
       flushLock = false;
-      store.setSyncState('offline'); // 保留队列，15s 后自动重试
+      store.setSyncState('offline'); // 传输类失败：保留队列，15s 后自动重试
       settle(error);
       clearTimeout(retryTimer);
       retryTimer = setTimeout(() => { retryTimer = null; flush().catch(() => {}); }, 15000);

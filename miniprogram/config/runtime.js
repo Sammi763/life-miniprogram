@@ -3,7 +3,7 @@
  * 真机正式版不会读取本地地址缓存，避免用户将微信登录请求指向任意服务器。
  */
 const DEVELOPMENT_API_BASE_URL = 'http://127.0.0.1:8787';
-const PRODUCTION_API_BASE_URL = ''; // 例如：https://api.your-domain.com
+const PRODUCTION_API_BASE_URL = 'https://wx.yzflab.top';
 
 function accountEnvironment() {
   try {

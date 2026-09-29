@@ -5,15 +5,15 @@
       <view class="profile-copy">
         <view class="profile-eyebrow">MY LIFE SPACE</view>
         <view class="profile-name">{{profile.nickname}}</view>
-        <view class="profile-phone">{{profile.hasPhone ? '手机号已保护' : '可绑定手机号保护账号'}}</view>
+        <view class="profile-space-label">专属微信数据空间</view>
       </view>
-      <view class="profile-edit" bindtap="editProfile">编辑</view>
+      <view class="profile-edit tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="editProfile">编辑</view>
     </view>
     <view class="profile-rule"></view>
     <view class="profile-stats">
       <view><text>{{recordCount}}</text><text>已记录</text></view>
+      <view><text>{{activeDays}}</text><text>记录天数</text></view>
       <view><text>{{pendingCount}}</text><text>待同步</text></view>
-      <view><text>{{profile.hasPhone ? '已保护' : '未绑定'}}</text><text>账号状态</text></view>
     </view>
   </view>
 
@@ -23,13 +23,17 @@
       <view class="status-pill {{syncTone}}"><text></text>{{syncText}}</view>
     </view>
     <view class="sync-detail">{{syncDetail}}</view>
+    <view class="sync-detail">本机缓存占用 {{cacheText}}</view>
+    <view wx:if="{{cacheError}}" class="notice-warn">{{cacheError}}</view>
+    <view wx:if="{{rejectedCount}}" class="notice-warn notice-warn-row"><text class="notice-text">{{rejectedText}}</text><view class="notice-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retryRejected">重试</view></view>
+    <view wx:if="{{issueText}}" class="notice-warn">{{issueText}}</view>
     <view class="sync-note" wx:if="{{pendingCount > 0}}">无需手动操作，网络恢复后将自动继续。</view>
   </view>
 
   <view class="card theme-card">
     <view class="section-head"><view><view class="section-kicker">PERSONAL STYLE</view><view class="section-title">界面主题</view></view><text class="sub">选择你的日常色彩</text></view>
     <view class="theme-grid">
-      <view wx:for="{{themeOptions}}" wx:key="id" class="theme-option {{item.selected ? 'theme-option-on' : ''}}" bindtap="onThemeSelect" data-theme="{{item.id}}">
+      <view wx:for="{{themeOptions}}" wx:key="id" class="theme-option tap-row {{item.selected ? 'theme-option-on' : ''}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="onThemeSelect" data-theme="{{item.id}}">
         <view class="theme-preview" style="background: {{item.preview}};"></view>
         <view class="theme-copy"><view>{{item.name}}</view><view class="sub">{{item.detail}}</view></view>
         <view wx:if="{{item.selected}}" class="theme-check">✓</view>
@@ -42,15 +46,15 @@
     <view class="budget-main-row"><text>¥</text><input class="budget-main-input" type="digit" value="{{budgetInput}}" bindinput="onBudgetInput" placeholder="不设上限" /></view>
     <view class="budget-caption">按分类设一个轻松可执行的范围（可选）</view>
     <view class="category-budget-list">
-      <view wx:for="{{categoryBudgetInputs}}" wx:key="key" class="category-budget-input"><text>{{item.key}}</text><view><text>¥</text><input type="digit" value="{{item.value}}" bindinput="onCategoryBudgetInput" data-key="{{item.key}}" placeholder="不限" /></view></view>
+      <view wx:for="{{categoryBudgetInputs}}" wx:key="key" class="category-budget-input"><text>{{item.key}}{{item.hiddenSuffix}}</text><view><text>¥</text><input type="digit" value="{{item.value}}" bindinput="onCategoryBudgetInput" data-key="{{item.key}}" placeholder="不限" /></view></view>
     </view>
-    <button class="btn btn-ghost budget-save" bindtap="saveBudget">保存预算</button>
+    <button class="btn btn-ghost budget-save" bindtap="saveBudget" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">保存预算</button>
   </view>
 
   <view class="module-section">
     <view class="section-intro"><view><view class="section-kicker">LIFE TOOLS</view><view class="section-title">生活工具</view></view><text class="sub">慢慢整理生活</text></view>
     <view class="card module-card">
-      <view wx:for="{{modules}}" wx:key="url" class="module-row" bindtap="goModule" data-url="{{item.url}}">
+      <view wx:for="{{modules}}" wx:key="url" class="module-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goModule" data-url="{{item.url}}">
         <view class="module-glyph module-glyph-{{item.tone}}">{{item.glyph}}</view>
         <view class="module-copy"><view>{{item.title}}</view><view class="sub">{{item.detail}}</view></view>
         <text class="module-arrow">›</text>
@@ -58,17 +62,67 @@
     </view>
   </view>
 
+  <view class="card share-card">
+    <view class="section-head"><view><view class="section-kicker">INVITE</view><view class="section-title">邀请朋友一起用</view></view><text class="sub">卡片不含你的记录</text></view>
+    <view class="share-note">转发出去的是应用本身。对方点开后在各自的账号里使用，看不到你的账本、习惯或随记。</view>
+    <button class="btn btn-ghost share-btn" open-type="share">转发给微信好友</button>
+  </view>
+
+  <!--
+    数据与隐私：只保留「决定数据出不出本机」的开关、合规入口、数据管理入口三行。
+    原先 10 行同权重的平铺（实测整卡 635px、占满 84% 视口的 24%）把
+    「个性化 AI 文案」这个唯一决定数据是否离开本机的开关和「永久删除账户」这种不可逆操作
+    混在了一起 —— 前者需要更显眼，后者需要隔离，两者都不该被折叠。
+    合规三份文档合并成一行是因为 pages/legal/legal 本身就带三个 tab，不需要新页面。
+  -->
   <view class="card settings-card">
     <view class="section-head"><view><view class="section-kicker">DATA CONTROL</view><view class="section-title">数据与隐私</view></view></view>
     <view class="setting-row ai-setting"><view><view>个性化 AI 文案</view><view class="sub">默认关闭，开启前会说明数据范围</view></view><switch checked="{{aiConsent}}" color="{{themeAccent}}" bindchange="onAiConsentChange" /></view>
-    <view class="setting-row" bindtap="goLegal" data-doc="privacy"><view><view>隐私政策与数据说明</view><view class="sub">信息用途、留存与删除方式</view></view><text>›</text></view>
-    <view class="setting-row" bindtap="goLegal" data-doc="service"><view><view>用户服务协议</view><view class="sub">服务边界与联系我们</view></view><text>›</text></view>
-    <view class="setting-row" bindtap="goLegal" data-doc="sharing"><view><view>第三方处理说明</view><view class="sub">微信能力与可选 DeepSeek AI</view></view><text>›</text></view>
-    <view class="setting-row" bindtap="exportFromServer"><view><view>导出云端备份</view><view class="sub">生成自己的 JSON 副本</view></view><text>›</text></view>
-    <view class="setting-row" bindtap="copyBackup"><view><view>复制本机备份</view><view class="sub">便于临时保存和迁移</view></view><text>›</text></view>
-    <view wx:if="{{showDemoControls}}" class="setting-row" bindtap="clearDemo"><view><view>清理示例内容</view><view class="sub">不会影响自己添加的记录</view></view><text>›</text></view>
-    <view class="setting-row setting-danger" bindtap="deleteAccount"><view><view>永久删除账户与数据</view><view class="sub">删除前会要求一次新的微信登录校验</view></view><text>{{deletingAccount ? '处理中' : '›'}}</text></view>
-    <view class="logout-entry" bindtap="logout">退出当前账号</view>
+    <view class="setting-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goLegal" data-doc="privacy"><view><view>隐私与合规</view><view class="sub">隐私政策 · 服务协议 · 第三方说明</view></view><text>›</text></view>
+    <view class="setting-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openDataSheet"><view><view>数据管理</view><view class="sub">导出备份、复制本机备份、重建缓存</view></view><text>›</text></view>
+  </view>
+
+  <!-- 账号相关单独成卡：删除与退出都不可逆，不该和普通设置挤在同一张卡里 -->
+  <view class="card account-card">
+    <view class="section-head"><view><view class="section-kicker">ACCOUNT</view><view class="section-title">账号</view></view><text class="sub">不可恢复的操作</text></view>
+    <view class="setting-row setting-danger tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="deleteAccount"><view><view>永久删除账户与数据</view><view class="sub">删除前会要求一次新的微信登录校验</view></view><text>{{deletingAccount ? '处理中' : '›'}}</text></view>
+    <view class="logout-entry tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="logout">退出当前账号</view>
+  </view>
+
+  <!-- 低频运维项收进弹层（Tab 页弹层由 attachOverlayWatcher 自动隐藏悬浮导航） -->
+  <view wx:if="{{dataSheetShow}}" class="mask" bindtap="closeDataSheet"></view>
+  <view wx:if="{{dataSheetShow}}" class="sheet" catchtap="noop">
+    <view class="sheet-title">数据管理</view>
+    <view class="setting-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="exportFromServer"><view><view>导出云端备份</view><view class="sub">含记录 ID 的 JSON 副本（v1），可用于恢复</view></view><text>›</text></view>
+    <view class="setting-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="copyBackup"><view><view>复制本机备份</view><view class="sub">含记录 ID 与删除记录，导入可恢复</view></view><text>›</text></view>
+    <view class="setting-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openImportSheet"><view><view>导入备份恢复</view><view class="sub">粘贴备份 JSON，预览确认后合并（不覆盖现值）</view></view><text>›</text></view>
+    <view class="setting-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="exportMoneyCsv"><view><view>导出账本 CSV</view><view class="sub">仅记账流水，可粘贴到 Excel / 表格</view></view><text>›</text></view>
+    <view class="setting-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="rebuildLocalCache"><view><view>重建本机缓存</view><view class="sub">缓存异常或占用过大时从云端重拉，不影响云端数据</view></view><text>›</text></view>
+    <view wx:if="{{showDemoControls}}" class="setting-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="clearDemo"><view><view>清理示例内容</view><view class="sub">不会影响自己添加的记录</view></view><text>›</text></view>
+  </view>
+
+  <!-- 导入备份恢复：粘贴 → 解析预览 → 确认；待同步未完成或离线时入口直接拦截 -->
+  <view wx:if="{{importSheetShow}}" class="mask" bindtap="closeImportSheet"></view>
+  <view wx:if="{{importSheetShow}}" class="sheet import-sheet" catchtap="noop">
+    <view class="sheet-title">导入备份恢复</view>
+    <view class="field">
+      <view class="field-label">粘贴备份 JSON（导出时复制的完整内容）</view>
+      <textarea class="import-textarea" value="{{importText}}" bindinput="onImportText" maxlength="-1" placeholder='以 {"format":"life-backup"...} 开头的 JSON' auto-height />
+    </view>
+    <view wx:if="{{importPreview && !importPreview.ok}}" class="notice-warn">{{importPreview.message}}</view>
+    <view wx:if="{{importPreview && importPreview.ok}}" class="import-preview">
+      <view class="import-preview-title">预览（共 {{importPreview.total}} 条）</view>
+      <view class="import-preview-row"><text>将新建 {{importPreview.create}} 条</text><text class="sub">已存在保留现值 {{importPreview.skipLive}} 条</text></view>
+      <view class="import-preview-row"><text class="sub">已删除保持删除 {{importPreview.skipDeleted}} 条</text><text class="sub">备份中已删除（不恢复）{{importPreview.skipBackupDeleted}} 条</text></view>
+      <view class="import-preview-row"><text class="sub">无效跳过 {{importPreview.invalidCount}} 条</text></view>
+      <view wx:for="{{importPreview.byCollection}}" wx:key="coll" class="import-preview-coll sub">{{item.coll}}：新建 {{item.create}} · 保留 {{item.skipLive}} · 删除保留 {{item.skipDeleted}} · 备份已删 {{item.skipBackupDeleted}} · 无效 {{item.invalid}}</view>
+      <view wx:if="{{importPreview.invalidSample.length}}" class="notice-warn">{{importPreview.invalidSample[0]}}</view>
+      <view class="sub import-note">提醒授权与 AI 同意不随备份恢复：恢复后需重新开启；已存在的同 ID 记录不会被覆盖（含恢复期间其他设备新建的记录，以云端为准），可重复导入。</view>
+    </view>
+    <view class="import-actions">
+      <button class="btn btn-ghost" bindtap="parseImport" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">解析预览</button>
+      <button class="btn btn-primary" disabled="{{!importPreview || !importPreview.ok || !importPreview.create || importBusy}}" bindtap="confirmImport" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{importBusy ? '恢复中…' : '确认恢复'}}</button>
+    </view>
   </view>
 
   <view class="tabbar-spacer"></view>

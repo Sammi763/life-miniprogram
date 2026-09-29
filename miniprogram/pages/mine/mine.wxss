@@ -3,10 +3,10 @@
 .profile-main { display:flex; align-items:center; min-width:0; }
 .profile-avatar { width:104rpx; height:104rpx; flex-shrink:0; font-size:38rpx; box-shadow:inset 0 0 0 6rpx rgba(255,255,255,.35); }
 .profile-copy { min-width:0; flex:1; margin-left:20rpx; }
-.profile-eyebrow, .section-kicker { color:var(--accent); font-size:19rpx; letter-spacing:2.8rpx; font-weight:700; }
+.profile-eyebrow, .section-kicker { color:var(--accent); font-size:20rpx; letter-spacing:2.8rpx; font-weight:700; }
 .profile-eyebrow { color:rgba(244,251,246,.68); }
 .profile-name { max-width:310rpx; margin:3rpx 0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:#FFF; font-size:35rpx; font-weight:700; }
-.profile-phone { color:rgba(244,251,246,.72); font-size:23rpx; }
+.profile-space-label { color:rgba(244,251,246,.72); font-size:23rpx; }
 .profile-edit { padding:10rpx 0 10rpx 18rpx; color:var(--hero-edit); font-size:24rpx; }
 .profile-rule { height:1rpx; margin:28rpx 0 20rpx; background:rgba(255,255,255,.17); }
 .profile-stats { display:flex; }
@@ -21,8 +21,8 @@
 .status-pill { display:flex; align-items:center; gap:8rpx; min-height:46rpx; padding:0 15rpx; border-radius:999rpx; font-size:21rpx; font-weight:600; }
 .status-pill text { width:10rpx; height:10rpx; border-radius:50%; background:currentColor; }
 .status-ready { color:var(--green); background:var(--green-soft); }
-.status-syncing { color:var(--amber); background:#F7F0E2; }
-.status-offline { color:var(--red); background:#F9EAE9; }
+.status-syncing { color:var(--amber); background:var(--warn-soft); }
+.status-offline { color:var(--red); background:var(--danger-soft); }
 .sync-detail { margin-top:24rpx; color:var(--ink); font-size:28rpx; }
 .sync-note { margin-top:9rpx; color:var(--ink-2); font-size:23rpx; }
 
@@ -56,6 +56,19 @@
 .module-glyph-review { color:#52697B; background:#E8EEF1; }.module-glyph-search { color:#756553; background:#F0EBE2; }.module-glyph-plan { color:#4E735F; background:#E6EFE7; }.module-glyph-report { color:#8B6542; background:#F3EBDD; }.module-glyph-shopping { color:#756256; background:#F1E8E2; }.module-glyph-media { color:#5E627E; background:#E9EAF3; }.module-glyph-fitness { color:#4D716C; background:#E4F0EE; }
 .module-copy { flex:1; min-width:0; margin-left:18rpx; }.module-copy > view:first-child { color:var(--ink); font-size:28rpx; font-weight:600; }.module-copy .sub { margin-top:2rpx; }.module-arrow { color:#A3ADA6; font-size:38rpx; font-weight:300; }
 
+.share-card { margin-top:36rpx; padding:0 32rpx; overflow:hidden; }.share-card .section-head { padding:30rpx 0 12rpx; }
+.share-note { color:var(--ink-2); font-size:23rpx; line-height:1.65; }
+.share-btn { margin:22rpx 0 28rpx; min-height:76rpx; font-size:27rpx; }
+
 .settings-card { margin-top:36rpx; padding:0 32rpx; overflow:hidden; }.settings-card .section-head { padding:30rpx 0 12rpx; }
 .setting-row { display:flex; align-items:center; justify-content:space-between; min-height:110rpx; border-top:1rpx solid var(--line); }.setting-row > view:first-child { color:var(--ink); font-size:27rpx; }.setting-row .sub { margin-top:3rpx; }.setting-row > text { color:#A3ADA6; font-size:38rpx; }.setting-danger > view:first-child, .setting-danger > text { color:var(--red); }.logout-entry { padding:24rpx 0 30rpx; text-align:center; color:var(--ink-2); font-size:25rpx; }
 .ai-setting switch { transform:scale(.86); transform-origin:right center; }
+/* 导入备份恢复弹层 */
+.import-textarea { width: 100%; min-height: 180rpx; font-size: 24rpx; padding: 16rpx; box-sizing: border-box; border: 1rpx solid var(--line); border-radius: 12rpx; background: var(--surface); }
+.import-preview { border: 1rpx solid var(--line); border-radius: 14rpx; padding: 18rpx 20rpx; margin-bottom: 20rpx; background: var(--surface); }
+.import-preview-title { font-weight: 600; margin-bottom: 10rpx; }
+.import-preview-row { display: flex; justify-content: space-between; gap: 12rpx; }
+.import-preview-coll { margin-top: 8rpx; }
+.import-note { margin-top: 12rpx; }
+.import-actions { display: flex; gap: 16rpx; }
+.import-actions .btn { flex: 1; }

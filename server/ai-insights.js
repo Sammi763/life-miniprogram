@@ -240,7 +240,7 @@ function buildRequestBody(config, scope, period, context) {
     ? '请根据今天和最近两周的记录，写一条今天的轻提醒，40字以内，优先给出一个具体而不施压的下一步。'
     : '请根据本月的统计、随记和日程，写一句贴合这个月实际生活的总结，60字以内，既具体又温和。';
   return {
-    model: (config.ai && config.ai.model) || 'deepseek-v4-flash',
+    model: (config.ai && config.ai.model) || 'deepseek-flash',
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
       { role: 'user', content: instruction + '\n周期：' + period + '\n<life_data>\n' + JSON.stringify(context) + '\n</life_data>' }

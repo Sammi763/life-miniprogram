@@ -1,7 +1,9 @@
 const store = require('../../utils/store');
 const sync = require('../../utils/sync');
+const ui = require('../../utils/ui');
 const { buildTextAvatar } = require('../../utils/text-avatar');
 const theme = require('../../utils/theme');
+const share = require('../../utils/share');
 
 const TYPES = [
   { key: '', label: '全部' },
@@ -14,6 +16,8 @@ const STATUSES = [
   { key: 'doing', label: '在看' },
   { key: 'done', label: '看完' }
 ];
+/* 工具栏的状态筛选：把「全部状态」与 STATUSES 合并成一组 chips */
+const STATUS_FILTERS = [{ key: '', label: '全部状态' }].concat(STATUSES);
 const STARS = [1, 2, 3, 4, 5];
 
 function typeLabel(kind) {
@@ -24,25 +28,37 @@ Page({
   data: {
     offline: false,
     types: TYPES,
-    statuses: STATUSES,
+    statuses: STATUS_FILTERS,
     stars: STARS,
     filter: '',
+    statusFilter: '',
     viewMode: 'grid',
     items: [],
     stats: { book: 0, movie: 0, music: 0, average: '—' },
+    today: '',
     sheetShow: false,
     saving: false,
+    undoShow: false,
     form: { id: '', kind: 'book', title: '', status: 'wishlist', rating: 0, comment: '', date: '' }
   },
   unsub: null,
 
-  onLoad() {
+  onLoad(options) {
     theme.applyToPage(this);
     this.unsub = store.subscribe(() => this.render());
     this.render();
+    this.setData({ today: sync.fmtDate(new Date()) });
+    /* 搜索页深链：直接打开对应收藏的编辑弹层 */
+    if (options && options.id) this.openEditById(options.id);
   },
-  onShow() { theme.applyToPage(this); this.render(); },
-  onUnload() { this.unsub && this.unsub(); },
+  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); },
+  onShareAppMessage: share.onShareAppMessage('media'),
+  onShareTimeline: share.onShareTimeline('media'),
+  onUnload() {
+    this.unsub && this.unsub();
+    clearTimeout(this.__undoTimer);
+  },
+  retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() {
     sync.pull().then(() => wx.stopPullDownRefresh()).catch(() => wx.stopPullDownRefresh());
   },
@@ -70,7 +86,9 @@ Page({
         };
       })
       .sort((a, b) => b.updatedAt - a.updatedAt);
-    const shown = this.data.filter ? records.filter((item) => item.kind === this.data.filter) : records;
+    const shown = records
+      .filter((item) => !this.data.filter || item.kind === this.data.filter)
+      .filter((item) => !this.data.statusFilter || item.status === this.data.statusFilter);
     const finishedThisYear = records.filter((item) => item.status === 'done' && item.date.slice(0, 4) === year);
     const rated = finishedThisYear.filter((item) => item.rating > 0);
     this.setData({
@@ -86,15 +104,20 @@ Page({
   },
 
   setFilter(event) { this.setData({ filter: event.currentTarget.dataset.kind }); this.render(); },
+  setStatusFilter(event) {
+    const status = event.currentTarget.dataset.status;
+    this.setData({ statusFilter: status === this.data.statusFilter ? '' : status });
+    this.render();
+  },
   setView(event) { this.setData({ viewMode: event.currentTarget.dataset.mode }); },
   openAdd() {
     this.setData({
       sheetShow: true,
-      form: { id: '', kind: 'book', title: '', status: 'wishlist', rating: 0, comment: '', date: sync.fmtDate(new Date()) }
+      form: { id: '', kind: 'book', title: '', status: 'wishlist', rating: 0, comment: '', date: this.data.today || sync.fmtDate(new Date()) }
     });
   },
-  openEdit(event) {
-    const id = event.currentTarget.dataset.id;
+  openEdit(event) { this.openEditById(event.currentTarget.dataset.id); },
+  openEditById(id) {
     const record = store.state.records.media[id];
     if (!record || record.deletedAt || !record.data) return;
     this.setData({ sheetShow: true, form: {
@@ -104,14 +127,18 @@ Page({
       status: record.data.status || 'wishlist',
       rating: Number(record.data.rating) || 0,
       comment: record.data.comment || '',
-      date: record.data.date || sync.fmtDate(new Date())
+      date: record.data.date || this.data.today || sync.fmtDate(new Date())
     } });
   },
   closeSheet() { if (!this.data.saving) this.setData({ sheetShow: false }); },
   noop() { },
   setKind(event) { this.setData({ 'form.kind': event.currentTarget.dataset.kind }); },
   setStatus(event) { this.setData({ 'form.status': event.currentTarget.dataset.status }); },
-  setRating(event) { this.setData({ 'form.rating': Number(event.currentTarget.dataset.rating) }); },
+  /* 点当前星级取消评分（回到 0 星），选错可以修正 */
+  setRating(event) {
+    const value = Number(event.currentTarget.dataset.rating);
+    this.setData({ 'form.rating': value === this.data.form.rating ? 0 : value });
+  },
   onTitle(event) { this.setData({ 'form.title': event.detail.value }); },
   onComment(event) { this.setData({ 'form.comment': event.detail.value }); },
   onDate(event) { this.setData({ 'form.date': event.detail.value }); },
@@ -121,6 +148,8 @@ Page({
     if (!title) return wx.showToast({ title: '请填写标题', icon: 'none' });
     if (title.length > 60) return wx.showToast({ title: '标题最多 60 个字', icon: 'none' });
     if (String(form.comment || '').length > 100) return wx.showToast({ title: '短评最多 100 个字', icon: 'none' });
+    if (ui.isRepeatedTap(this, 'media-save', 800)) return;
+    this.setData({ saving: true });
     this.saveRecord();
   },
   saveRecord() {
@@ -134,14 +163,21 @@ Page({
       date: form.date || sync.fmtDate(new Date())
     }, form.id || undefined);
     this.setData({ sheetShow: false, saving: false });
+    ui.completeFeedback({ toast: '已收藏' });
   },
+  /* 删除立即执行 + 5 秒撤销条，不再弹确认窗 */
   remove(event) {
     const id = event.currentTarget.dataset.id;
     const record = store.state.records.media[id];
-    if (!record || record.deletedAt) return;
-    wx.showModal({
-      title: '删除这条收藏？', content: record.data.title, confirmColor: '#C0392B',
-      success: (result) => { if (result.confirm) sync.remove('media', id); }
+    if (!record || record.deletedAt || !record.data) return;
+    const undoData = record.data;
+    sync.remove('media', id);
+    ui.armUndo(this, {
+      onUndo: () => {
+        sync.upsert('media', undoData, id);
+        wx.showToast({ title: '已恢复', icon: 'success' });
+      }
     });
-  }
+  },
+  onUndoTap() { ui.performUndo(this); }
 });

@@ -149,8 +149,13 @@ class FileStore {
     }]));
   }
 
-  async upsert(ownerId, collection, id, data, updatedAt) {
+  async upsert(ownerId, collection, id, data, updatedAt, options) {
+    // createOnly（导入恢复语义）：记录已存在（存活或墓碑）即拒绝，检查先于 LWW 判断。
+    const createOnly = Boolean(options && options.createOnly);
     const old = this.recordsFor(ownerId, collection).find((record) => record.id === id);
+    if (createOnly && old) {
+      return { applied: false, reason: 'exists', record: { id, data: old.data, updatedAt: old.updatedAt, deletedAt: old.deletedAt || 0 } };
+    }
     if (old && (old.updatedAt || 0) > updatedAt) {
       return { applied: false, reason: 'older', record: { id, data: old.data, updatedAt: old.updatedAt, deletedAt: old.deletedAt || 0 } };
     }

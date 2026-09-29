@@ -1,26 +1,48 @@
 const store = require('../../utils/store');
 const sync = require('../../utils/sync');
+const ui = require('../../utils/ui');
 const theme = require('../../utils/theme');
+const share = require('../../utils/share');
+// 金额显示统一走 finance.formatMoney：此前这里写死 toFixed(2)，同屏会出现 ¥143.50 与 ¥54.5 两种写法
+const { formatMoney } = require('../../utils/finance');
+
+function emptyForm() {
+  return { id: '', name: '', note: '', price: '', link: '', done: false, pinned: false };
+}
 
 Page({
   data: {
     offline: false,
     total: 0,
     completedCount: 0,
-    completedAmount: 0,
-    items: [],
+    completedAmountText: '0',
+    pendingItems: [],
+    doneItems: [],
+    showDone: true,
     sheetShow: false,
-    form: { id: '', name: '', note: '', price: '', link: '', done: false, pinned: false }
+    saving: false,
+    undoShow: false,
+    undoText: '物品已删除',
+    advanced: false,
+    form: emptyForm()
   },
   unsub: null,
 
-  onLoad() {
+  onLoad(options) {
     theme.applyToPage(this);
     this.unsub = store.subscribe(() => this.render());
     this.render();
+    /* 搜索深链：直接打开对应物品编辑 */
+    if (options && options.id) this.openEditById(options.id);
   },
-  onShow() { theme.applyToPage(this); this.render(); },
-  onUnload() { this.unsub && this.unsub(); },
+  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); },
+  onShareAppMessage: share.onShareAppMessage('shopping'),
+  onShareTimeline: share.onShareTimeline('shopping'),
+  onUnload() {
+    this.unsub && this.unsub();
+    clearTimeout(this.__undoTimer);
+  },
+  retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() {
     sync.pull().then(() => wx.stopPullDownRefresh()).catch(() => wx.stopPullDownRefresh());
   },
@@ -33,7 +55,7 @@ Page({
         name: String(record.data.name),
         note: record.data.note || '',
         price: Number(record.data.price) > 0 ? Number(record.data.price) : 0,
-        priceText: Number(record.data.price) > 0 ? '¥' + Number(record.data.price).toFixed(2) : '',
+        priceText: Number(record.data.price) > 0 ? '¥' + formatMoney(Number(record.data.price)) : '',
         link: record.data.link || '',
         done: !!record.data.done,
         updatedAt: record.updatedAt || 0
@@ -45,21 +67,23 @@ Page({
     const completed = items.filter((item) => item.done);
     this.setData({
       offline: store.state.syncState === 'offline',
-      total: items.filter((item) => !item.done).length,
+      total: items.length - completed.length,
       completedCount: completed.length,
-      completedAmount: completed.reduce((sum, item) => sum + item.price, 0),
-      items
+      completedAmountText: formatMoney(completed.reduce((sum, item) => sum + item.price, 0)),
+      pendingItems: items.filter((item) => !item.done),
+      doneItems: completed
     });
   },
+  toggleDoneGroup() { this.setData({ showDone: !this.data.showDone }); },
 
   openAdd() {
-    this.setData({ sheetShow: true, form: { id: '', name: '', note: '', price: '', link: '', done: false, pinned: false } });
+    this.setData({ sheetShow: true, advanced: false, form: emptyForm() });
   },
-  openEdit(event) {
-    const id = event.currentTarget.dataset.id;
+  openEdit(event) { this.openEditById(event.currentTarget.dataset.id); },
+  openEditById(id) {
     const record = store.state.records.shopping[id];
     if (!record || record.deletedAt || !record.data) return;
-    this.setData({ sheetShow: true, form: {
+    const form = {
       id,
       name: record.data.name || '',
       note: record.data.note || '',
@@ -67,9 +91,12 @@ Page({
       link: record.data.link || '',
       done: !!record.data.done,
       pinned: Boolean(record.data.pinned)
-    } });
+    };
+    /* 编辑时若高级字段有值，直接展开，避免用户以为内容丢了 */
+    this.setData({ sheetShow: true, advanced: Boolean(form.link || form.done || form.pinned), form });
   },
-  closeSheet() { this.setData({ sheetShow: false }); },
+  closeSheet() { if (!this.data.saving) this.setData({ sheetShow: false }); },
+  toggleAdvanced() { this.setData({ advanced: !this.data.advanced }); },
   noop() { },
   onName(event) { this.setData({ 'form.name': event.detail.value }); },
   onNote(event) { this.setData({ 'form.note': event.detail.value }); },
@@ -77,6 +104,18 @@ Page({
   onLink(event) { this.setData({ 'form.link': event.detail.value }); },
   onDone(event) { this.setData({ 'form.done': !!event.detail.value }); },
   onPinned(event) { this.setData({ 'form.pinned': !!event.detail.value }); },
+  /* 商品链接：读剪贴板一键填充 */
+  pasteLink() {
+    wx.getClipboardData({
+      success: (result) => {
+        const link = String(result.data || '').trim();
+        if (!link) return wx.showToast({ title: '剪贴板是空的', icon: 'none' });
+        this.setData({ 'form.link': link });
+        wx.showToast({ title: '已粘贴', icon: 'success' });
+      },
+      fail: () => wx.showToast({ title: '无法读取剪贴板', icon: 'none' })
+    });
+  },
   save() {
     const form = this.data.form;
     const name = String(form.name || '').trim();
@@ -92,35 +131,53 @@ Page({
       done: !!form.done
     };
     if (form.pinned) data.pinned = true;
+    if (ui.isRepeatedTap(this, 'shopping-save', 600)) return;
+    this.setData({ saving: true });
     sync.upsert('shopping', data, form.id || undefined);
-    this.setData({ sheetShow: false });
+    this.setData({ sheetShow: false, saving: false });
+    ui.completeFeedback({ toast: '已保存' });
   },
   toggle(event) {
     const id = event.currentTarget.dataset.id;
     const record = store.state.records.shopping[id];
-    if (record && !record.deletedAt) sync.upsert('shopping', { ...record.data, done: !record.data.done }, id);
+    if (!record || record.deletedAt) return;
+    if (ui.isRepeatedTap(this, 'shopping-toggle-' + id, 400)) return;
+    sync.upsert('shopping', { ...record.data, done: !record.data.done }, id);
+    if (!record.data.done) ui.completeFeedback({});
   },
+  /* 删除立即执行 + 5 秒撤销条 */
   remove(event) {
     const id = event.currentTarget.dataset.id;
     const record = store.state.records.shopping[id];
-    if (!record || record.deletedAt) return;
-    wx.showModal({
-      title: '删除这件物品？', content: record.data.name, confirmColor: '#C0392B',
-      success: (result) => { if (result.confirm) sync.remove('shopping', id); }
-    });
-  },
-  clearDone() {
-    if (!this.data.completedCount) return wx.showToast({ title: '没有已买项目', icon: 'none' });
-    wx.showModal({
-      title: '清空已买项目？', content: '这些项目会从清单中移除', confirmColor: '#C0392B',
-      success: (result) => {
-        if (!result.confirm) return;
-        Object.values(store.state.records.shopping).forEach((record) => {
-          if (!record.deletedAt && record.data && record.data.done) sync.remove('shopping', record.id);
-        });
+    if (!record || record.deletedAt || !record.data) return;
+    const undoData = record.data;
+    sync.remove('shopping', id);
+    ui.armUndo(this, {
+      text: '物品已删除',
+      onUndo: () => {
+        sync.upsert('shopping', undoData, id);
+        wx.showToast({ title: '已恢复', icon: 'success' });
       }
     });
   },
+  /* 清空已买同样走撤销：整批恢复，比确认弹窗更从容 */
+  clearDone() {
+    if (!this.data.completedCount) return wx.showToast({ title: '没有已买项目', icon: 'none' });
+    const removed = [];
+    Object.values(store.state.records.shopping).forEach((record) => {
+      if (!record.deletedAt && record.data && record.data.done) removed.push({ id: record.id, data: record.data });
+    });
+    if (!removed.length) return;
+    removed.forEach((item) => sync.remove('shopping', item.id));
+    ui.armUndo(this, {
+      text: '已清空 ' + removed.length + ' 件已买',
+      onUndo: () => {
+        removed.forEach((item) => sync.upsert('shopping', item.data, item.id));
+        wx.showToast({ title: '已恢复', icon: 'success' });
+      }
+    });
+  },
+  onUndoTap() { ui.performUndo(this); },
   copyLink(event) {
     const link = event.currentTarget.dataset.link;
     if (!link) return;

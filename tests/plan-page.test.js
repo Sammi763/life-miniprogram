@@ -66,6 +66,15 @@ try {
     kind: 'series', title: '每日事项', startDate: week[0], time: '08:00', repeat: 'daily', endDate: today
   }, 'series'], '停止重复必须保留原记录并设置截止日期');
 
+  /* 每月重复的日期选择：picker 的 detail.value 是 0 起下标，必须 +1 落库（此前选 15 号存成 14、31 号存成 30） */
+  page.data.form = { ...page.data.form, repeat: 'monthly', repeatDay: '1' };
+  page.onRepeatDay.call(page, { detail: { value: '0' } });
+  assert.strictEqual(page.data.form.repeatDay, '1', '选择 1 号（下标 0）必须保存 1');
+  page.onRepeatDay.call(page, { detail: { value: '14' } });
+  assert.strictEqual(page.data.form.repeatDay, '15', '选择 15 号（下标 14）必须保存 15');
+  page.onRepeatDay.call(page, { detail: { value: '30' } });
+  assert.strictEqual(page.data.form.repeatDay, '31', '选择 31 号（下标 30）必须保存 31');
+
   console.log('PLAN_PAGE_TEST_PASSED');
 } finally {
   store.state.records.plan = originalPlans;

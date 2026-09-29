@@ -1,7 +1,22 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view class="search-head"><input focus="true" value="{{keyword}}" bindinput="onKeyword" placeholder="搜索随记、日程、待买、书影音和账本" maxlength="50" /></view>
-<scroll-view scroll-x="true" class="search-filters"><view class="search-filter-line"><view wx:for="{{filters}}" wx:key="key" class="chip {{kind === item.key ? 'on' : ''}}" bindtap="setKind" data-kind="{{item.key}}">{{item.label}}</view></view></scroll-view>
-<view wx:if="{{!searched}}" class="card search-empty"><view>想找什么？</view><view class="sub">输入关键词后，只会在你已同步到本机的文字记录中检索。</view></view>
+<view class="search-head">
+  <text class="search-icon">⌕</text>
+  <input focus="true" value="{{keyword}}" bindinput="onKeyword" bindconfirm="onConfirm" confirm-type="search" placeholder="搜索随记、日程、待买、书影音和账本" maxlength="50" cursor-spacing="24" />
+  <view wx:if="{{keyword}}" class="search-clear tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="clearKeyword">✕</view>
+</view>
+<scroll-view scroll-x="true" class="search-filters"><view class="search-filter-line"><view wx:for="{{filters}}" wx:key="key" class="chip {{kind === item.key ? 'on' : ''}}" bindtap="setKind" data-kind="{{item.key}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.label}}</view></view></scroll-view>
+
+<view wx:if="{{!searched && history.length}}" class="card search-history">
+  <view class="search-history-head"><text class="search-history-title">最近搜索</text><view class="sub search-history-clear" bindtap="clearHistory" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">清除</view></view>
+  <view class="chips"><view wx:for="{{history}}" wx:key="*this" class="chip" bindtap="onHistoryTap" data-keyword="{{item}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item}}</view></view>
+</view>
+
+<view wx:if="{{!searched && !history.length}}" class="card search-empty"><view>想找什么？</view><view class="sub">输入关键词后，只会在你已同步到本机的文字记录中检索。</view></view>
 <view wx:if="{{searched && results.length === 0}}" class="card search-empty"><view>没有找到匹配内容</view><view class="sub">试试更短的关键词，或切换分类。</view></view>
-<view wx:for="{{results}}" wx:key="key" class="card search-result record-card" hover-class="record-card-pressed" bindtap="openResult" data-id="{{item.id}}" data-kind="{{item.kind}}"><view class="search-result-top"><text class="search-kind">{{item.kindText}}</text><text class="sub">{{item.date}}</text></view><view class="search-title">{{item.title}}</view><view wx:if="{{item.subtitle}}" class="sub">{{item.subtitle}}</view></view>
+<view wx:if="{{searched && results.length}}" class="search-count sub">找到 {{resultTotal}} 条<block wx:if="{{resultsTruncated}}">，仅显示最近 {{results.length}} 条</block></view>
+<view wx:for="{{results}}" wx:key="key" class="card search-result record-card" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openResult" data-id="{{item.id}}" data-kind="{{item.kind}}">
+  <view class="search-result-top"><text class="search-kind">{{item.kindText}}</text><text class="sub">{{item.date}}</text></view>
+  <view class="search-title"><text wx:for="{{item.titleSegs}}" wx:for-item="seg" wx:key="index" class="{{seg.hit ? 'search-hit' : ''}}">{{seg.text}}</text></view>
+  <view wx:if="{{item.subtitle}}" class="sub"><text wx:for="{{item.subtitleSegs}}" wx:for-item="seg" wx:key="index" class="{{seg.hit ? 'search-hit' : ''}}">{{seg.text}}</text></view>
+</view>
 </view>

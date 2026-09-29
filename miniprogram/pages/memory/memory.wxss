@@ -30,7 +30,7 @@
   font-size: 23rpx;
 }
 .memory-stats-number { color: var(--accent); font-size: 28rpx; font-weight: 700; }
-.memory-stats-divider { margin: 0 2rpx; color: #B5BDB7; }
+.memory-stats-divider { margin: 0 2rpx; color: var(--ink-2); }
 .memory-search {
   display: flex;
   align-items: center;
@@ -102,7 +102,7 @@
 .filter-scroll { white-space: nowrap; margin-top: 16rpx; }
 .tag-scroll { margin-top: 10rpx; }
 .filter-line { display: inline-flex; gap: 12rpx; }
-.filter-chip { padding: 10rpx 18rpx; background: #EEF2EE; color: var(--ink-2); border-radius: 999rpx; font-size: 24rpx; }
+.filter-chip { padding: 10rpx 18rpx; background: var(--accent-wash); color: var(--ink-2); border-radius: 999rpx; font-size: 24rpx; }
 .filter-chip-on { color: #FFF; background: var(--accent); }
 .clear-filter { color: var(--accent); font-size: 24rpx; text-align: right; margin-top: 12rpx; }
 
@@ -110,9 +110,9 @@
   margin: 28rpx 24rpx 0;
   padding: 62rpx 32rpx 68rpx;
   text-align: center;
-  border: 1rpx dashed #CDD9D0;
+  border: 1rpx dashed var(--line);
   border-radius: 28rpx;
-  background: rgba(255, 255, 255, .55);
+  background: var(--accent-wash);
 }
 .memory-empty-mark {
   width: 74rpx;
@@ -120,7 +120,7 @@
   line-height: 67rpx;
   box-sizing: border-box;
   margin: 0 auto 22rpx;
-  border: 1rpx solid #C5D8CD;
+  border: 1rpx solid var(--line);
   border-radius: 50%;
   color: var(--accent);
   font-size: 40rpx;
@@ -148,7 +148,7 @@
   position: relative;
   margin: 4rpx 0 0 9rpx;
   padding: 10rpx 0 2rpx 27rpx;
-  border-left: 2rpx solid #D7E2DA;
+  border-left: 2rpx solid var(--line);
 }
 .memory-item {
   position: relative;
@@ -166,33 +166,16 @@
   box-sizing: border-box;
   border: 4rpx solid var(--bg);
   border-radius: 50%;
-  background: #84A99B;
+  background: var(--accent);
 }
 .memory-item-top { display: flex; align-items: center; gap: 14rpx; margin-bottom: 14rpx; }
 .memory-time { color: var(--ink-2); font-size: 24rpx; }
 .memory-mood { color: var(--accent); background: var(--accent-soft); padding: 4rpx 12rpx; border-radius: 999rpx; font-size: 22rpx; }
-.memory-delete { margin-left: auto; padding: 8rpx; color: #9DA79F; font-size: 22rpx; }
+.memory-delete { margin-left: auto; padding: 8rpx; color: var(--ink-2); font-size: 22rpx; }
 .memory-content { white-space: pre-wrap; color: var(--ink); line-height: 1.75; font-size: 29rpx; }
 .memory-tags { margin-top: 16rpx; color: var(--accent); font-size: 24rpx; }
 
-.undo-bar {
-  position: fixed;
-  z-index: 20;
-  left: 32rpx;
-  right: 32rpx;
-  bottom: 142rpx;
-  display: flex;
-  justify-content: space-between;
-  padding: 22rpx 28rpx;
-  border-radius: 18rpx;
-  background: #213E36;
-  color: #FFF;
-  font-size: 26rpx;
-  box-shadow: 0 10rpx 28rpx rgba(24, 53, 44, .22);
-}
-.undo-bar text:last-child { color: #C8E6D4; font-weight: 700; }
-
-.memory-sheet { max-height: 88vh; overflow-y: auto; }
+.memory-sheet { overflow-y: auto; }
 .memory-editor {
   width: 100%;
   min-height: 240rpx;
@@ -210,3 +193,7 @@
 .memory-time-row .picker-value { color: var(--ink); font-size: 26rpx; }
 .recent-tags { margin: -6rpx 0 22rpx; white-space: nowrap; overflow: hidden; }
 .recent-tag { display: inline-block; margin-right: 16rpx; color: var(--accent); font-size: 23rpx; }
+
+.memory-more { padding: 4rpx 0 16rpx; text-align: center; }
+.memory-more-note { margin-bottom: 14rpx; color: var(--ink-2); font-size: 23rpx; }
+.memory-more-btn { min-height: 76rpx; font-size: 26rpx; }

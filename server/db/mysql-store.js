@@ -217,7 +217,10 @@ class MySqlStore {
     }));
   }
 
-  async upsert(ownerId, collection, id, data, updatedAt) {
+  async upsert(ownerId, collection, id, data, updatedAt, options) {
+    // createOnly（导入恢复语义）：只要记录已存在（存活或墓碑）就拒绝写入并回传服务端现状。
+    // 检查在 FOR UPDATE 事务内、且先于 LWW —— 并发导入/多设备写入由行锁串行化，没有竞态窗口。
+    const createOnly = Boolean(options && options.createOnly);
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
@@ -226,6 +229,10 @@ class MySqlStore {
          FROM records WHERE owner_id = ? AND collection = ? AND record_id = ? FOR UPDATE`,
         [ownerId, collection, id]
       );
+      if (createOnly && rows.length) {
+        await connection.rollback();
+        return { applied: false, reason: 'exists', record: normalizeRecord(rows[0]) };
+      }
       if (rows.length && Number(rows[0].updatedAt) > updatedAt) {
         await connection.rollback();
         return { applied: false, reason: 'older', record: normalizeRecord(rows[0]) };

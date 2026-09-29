@@ -1,0 +1,4 @@
+<view wx:if="{{show}}" class="undo-bar {{aboveTab ? 'undo-bar-raised' : ''}}">
+  <text class="undo-text">{{text}}</text>
+  <view class="undo-btn" hover-class="undo-pressed" hover-start-time="20" hover-stay-time="90" bindtap="onUndo">撤销</view>
+</view>

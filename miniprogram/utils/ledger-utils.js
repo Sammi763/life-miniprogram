@@ -179,8 +179,37 @@ function buildCategoryBudgetProgress(moneyRecords, categoryBudgets, month) {
   return { rows, overspent: rows.filter((row) => row.over > 0) };
 }
 
+/*
+ * 跨模块预算建议（只读）：待买预估价 + 本月支出 超过用户设置的月预算时给出提示。
+ * 纯计算，绝不修改预算或待买状态；页面只负责展示与跳转「我的」页预算设置。
+ */
+function buildBudgetAdvice(settingsRecord, moneyRecords, shoppingRecords, month) {
+  const data = settingsRecord && !settingsRecord.deletedAt && settingsRecord.data ? settingsRecord.data : {};
+  const budget = number(data.budget);
+  if (!(budget > 0)) return null;
+  let monthOut = 0;
+  values(moneyRecords).forEach((record) => {
+    const item = record.data;
+    if (item.type === 'expense' && String(item.date || '').slice(0, 7) === month) monthOut += number(item.amount);
+  });
+  let pendingEstimate = 0;
+  values(shoppingRecords).forEach((record) => {
+    const item = record.data;
+    if (!item.done && number(item.price) > 0) pendingEstimate += number(item.price);
+  });
+  const total = round(monthOut + pendingEstimate);
+  if (total <= budget) return null;
+  return {
+    budget: round(budget),
+    monthOut: round(monthOut),
+    pendingEstimate: round(pendingEstimate),
+    over: round(total - budget)
+  };
+}
+
 module.exports = {
   buildBillAlerts,
+  buildBudgetAdvice,
   buildCategoryBudgetProgress,
   calculateAccountBalances,
   summarizeMoney,

@@ -53,7 +53,7 @@ function loadConfig() {
       enabled: booleanFrom(env.AI_ENABLED, true),
       provider: env.AI_PROVIDER || 'deepseek',
       baseUrl: env.AI_BASE_URL || 'https://api.deepseek.com',
-      model: env.AI_MODEL || 'deepseek-v4-flash',
+      model: env.AI_MODEL || 'deepseek-flash',
       maxTokens: numberFrom(env.AI_MAX_TOKENS, 160),
       timeoutMs: numberFrom(env.AI_TIMEOUT_MS, 12000)
     },

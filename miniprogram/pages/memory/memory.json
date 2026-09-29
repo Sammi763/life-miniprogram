@@ -1,5 +1,8 @@
 {
   "navigationBarTitleText": "生活时间线",
   "enablePullDownRefresh": true,
-  "backgroundColor": "#F3F5F2"
+  "backgroundColor": "#F3F5F2",
+  "usingComponents": {
+    "undo-bar": "/components/undo-bar/undo-bar"
+  }
 }

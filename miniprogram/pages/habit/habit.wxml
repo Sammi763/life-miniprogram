@@ -1,54 +1,121 @@
 <view class="theme-page" style="{{themeStyle}}">
 <view wx:if="{{offline}}" class="banner">
   <text>云端暂不可用，改动已暂存本机</text>
-  <text bindtap="onPullDownRefresh" style="font-weight:600">重试</text>
+  <view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view>
 </view>
 
-<view wx:for="{{habits}}" wx:key="id" class="card habit-card">
-  <view class="habit-row" bindtap="tapHabit" data-id="{{item.id}}" data-mode="{{item.mode}}">
+<view wx:for="{{habits}}" wx:key="id" class="card habit-card" bindlongpress="onCardLongpress" data-id="{{item.id}}">
+  <view class="habit-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="tapHabit" data-id="{{item.id}}" data-mode="{{item.mode}}">
     <view class="habit-info">
-      <view class="habit-name">{{item.name}} <text class="habit-streak" wx:if="{{item.streak}}">连续 {{item.streak}}</text></view>
+      <view class="habit-name">{{item.name}} <text class="habit-streak" wx:if="{{item.streakText}}">连续 {{item.streakText}}</text></view>
       <view class="sub">{{item.text}}</view>
     </view>
-    <view class="habit-btn {{item.done ? 'habit-btn-on' : ''}}">
-      {{item.mode === 'count' ? '+1' : (item.done ? '✓' : '打卡')}}
+    <view class="habit-actions">
+      <view wx:if="{{item.mode === 'count' && item.value > 0}}" class="habit-btn habit-btn-minus" catchtap="tapHabitMinus" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">−1</view>
+      <view class="habit-btn {{item.done ? 'habit-btn-on' : ''}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
+        {{item.mode === 'count' ? '+1' : (item.done ? '✓' : '打卡')}}
+      </view>
     </view>
   </view>
   <view class="habit-bar" wx:if="{{item.mode !== 'check'}}">
     <view class="habit-bar-fill" style="width: {{item.value >= item.target ? 100 : (item.target ? item.value * 100 / item.target : 0)}}%"></view>
   </view>
-  <view class="habit-edit" catchtap="editHabit" data-id="{{item.id}}">管理</view>
+  <view wx:if="{{historyShow === item.id}}" class="habit-history">
+    <view class="habit-history-grid">
+      <view wx:for="{{historyGrid}}" wx:for-item="week" wx:for-index="wi" wx:key="wi" class="habit-history-week">
+        <view wx:for="{{week}}" wx:for-item="cell" wx:for-index="di" wx:key="di"
+          class="habit-cell lv-{{cell.level}} {{cell.future ? 'is-future' : ''}}"
+          catchtap="openBackfill" data-id="{{item.id}}" data-date="{{cell.date}}"
+          hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"></view>
+      </view>
+    </view>
+    <view class="habit-history-meta"><text>近 12 周 · 点格子补录</text><text>{{historyRange}}</text></view>
+  </view>
+  <view class="habit-edit-row">
+    <view class="habit-edit tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" catchtap="toggleHistory" data-id="{{item.id}}">{{historyShow === item.id ? '收起' : '历史'}}</view>
+    <view class="habit-edit tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" catchtap="openBackfill" data-id="{{item.id}}">补录</view>
+    <view class="habit-edit tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" catchtap="editHabit" data-id="{{item.id}}">管理</view>
+  </view>
 </view>
 
 <view wx:if="{{habits.length === 0}}" class="card"><view class="empty">还没有习惯，点右下角添加一个吧</view></view>
 
-<view class="fab" bindtap="openAdd">＋</view>
+<view class="fab" hover-class="fab-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openAdd">＋</view>
 
 <view wx:if="{{sheetShow}}" class="mask" bindtap="closeSheet"></view>
 <view wx:if="{{sheetShow}}" class="sheet" catchtap="noop">
   <view class="sheet-title">{{form.id ? '编辑习惯' : '新增习惯'}}</view>
   <view class="field">
     <view class="field-label">名字</view>
-    <input value="{{form.name}}" bindinput="setName" placeholder="如：喝水 / 阅读 / 步行" maxlength="12" />
+    <input value="{{form.name}}" bindinput="setName" placeholder="如：喝水 / 阅读 / 步行" maxlength="12" confirm-type="next" cursor-spacing="24" />
   </view>
   <view class="field">
     <view class="field-label">打卡方式</view>
     <view class="chips">
       <view wx:for="{{modes}}" wx:key="k"
-        class="chip {{form.mode === item.k ? 'on' : ''}}" bindtap="setMode" data-k="{{item.k}}">{{item.label}}</view>
+        class="chip {{form.mode === item.k ? 'on' : ''}}" bindtap="setMode" data-k="{{item.k}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.label}}</view>
     </view>
   </view>
   <view class="field" wx:if="{{form.mode !== 'check'}}">
     <view class="field-label">每日目标</view>
-    <input type="number" value="{{form.target}}" bindinput="setTarget" placeholder="如 8" />
+    <input type="number" value="{{form.target}}" bindinput="setTarget" placeholder="如 8" confirm-type="next" cursor-spacing="24" />
   </view>
   <view class="field" wx:if="{{form.mode === 'count' || form.mode === 'value'}}">
     <view class="field-label">单位</view>
-    <input value="{{form.unit}}" bindinput="setUnit" placeholder="如 杯 / 步 / 分钟" maxlength="6" />
+    <input value="{{form.unit}}" bindinput="setUnit" placeholder="如 杯 / 步 / 分钟" maxlength="6" confirm-type="done" cursor-spacing="24" />
   </view>
   <view class="switch-row"><view><view>置顶到今日待处理</view><view class="sub">优先出现在今日首页</view></view><switch checked="{{form.pinned}}" color="{{themeAccent}}" bindchange="onPinned" /></view>
-  <button class="btn btn-primary" bindtap="save">保存</button>
+  <button class="btn btn-primary" disabled="{{saving}}" bindtap="save" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{saving ? '保存中…' : '保存'}}</button>
+  <view wx:if="{{form.id}}" class="sheet-delete tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="removeHabit" data-id="{{form.id}}">删除这个习惯（含全部打卡记录）</view>
 </view>
+
+<view wx:if="{{valueSheetShow}}" class="mask" bindtap="closeValueSheet"></view>
+<view wx:if="{{valueSheetShow}}" class="sheet" catchtap="noop">
+  <view class="sheet-title">记录{{valueForm.name}}</view>
+  <view class="field">
+    <view class="field-label">今日数值{{valueForm.unit ? '（' + valueForm.unit + '）' : ''}}</view>
+    <input type="digit" value="{{valueForm.value}}" bindinput="onValueInput" placeholder="0" focus="{{valueSheetShow}}" confirm-type="done" cursor-spacing="24" />
+  </view>
+  <view class="chips value-steps">
+    <view class="chip" bindtap="valueStep" data-delta="-1" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">−1</view>
+    <view class="chip" bindtap="valueStep" data-delta="1" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">+1</view>
+    <view class="chip" bindtap="valueStep" data-delta="5" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">+5</view>
+    <view class="chip" bindtap="valueStep" data-delta="10" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">+10</view>
+  </view>
+  <button class="btn btn-primary" bindtap="saveValue" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">保存</button>
+</view>
+
+<view wx:if="{{backfillSheetShow}}" class="mask" bindtap="closeBackfillSheet"></view>
+<view wx:if="{{backfillSheetShow}}" class="sheet" catchtap="noop">
+  <view class="sheet-title">{{backfillForm.hadEntry ? '修正' : '补录'}}「{{backfillForm.name}}」</view>
+  <view class="field">
+    <view class="field-label">日期（限近 12 周）</view>
+    <picker mode="date" start="{{minDate}}" end="{{today}}" value="{{backfillForm.date}}" bindchange="onBackfillDate">
+      <view class="picker-value tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{backfillForm.date}}</view>
+    </picker>
+  </view>
+  <view class="field" wx:if="{{backfillForm.mode === 'check'}}">
+    <view class="field-label">当天完成情况</view>
+    <view class="chips">
+      <view class="chip {{backfillForm.value === '1' || backfillForm.value === 1 ? 'on' : ''}}" bindtap="setBackfillDone" data-v="1" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">已完成</view>
+      <view class="chip {{backfillForm.value === '0' || backfillForm.value === 0 ? 'on' : ''}}" bindtap="setBackfillDone" data-v="0" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">未完成</view>
+    </view>
+  </view>
+  <view class="field" wx:if="{{backfillForm.mode !== 'check'}}">
+    <view class="field-label">当天数值{{backfillForm.unit ? '（' + backfillForm.unit + '）' : ''}}</view>
+    <input type="digit" value="{{backfillForm.value}}" bindinput="onBackfillInput" placeholder="0" confirm-type="done" cursor-spacing="24" />
+    <view class="chips value-steps">
+      <view class="chip" bindtap="backfillStep" data-delta="-1" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">−1</view>
+      <view class="chip" bindtap="backfillStep" data-delta="1" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">+1</view>
+      <view class="chip" bindtap="backfillStep" data-delta="5" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">+5</view>
+      <view class="chip" bindtap="backfillStep" data-delta="10" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">+10</view>
+    </view>
+  </view>
+  <button class="btn btn-primary" bindtap="saveBackfill" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">保存</button>
+  <view wx:if="{{backfillForm.hadEntry}}" class="sheet-delete tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="clearBackfillDay">清除这一天的打卡记录</view>
+</view>
+
+<undo-bar show="{{undoShow}}" text="{{undoText || '习惯已删除'}}" bind:undo="onUndoTap" />
 
 <view class="tabbar-spacer"></view>
 </view>

@@ -89,39 +89,44 @@ function makeOneOff(record) {
 function buildSeriesOccurrences(record, rangeStart, rangeEnd, overrides) {
   const data = record.data;
   if (data.kind !== 'series' || !data.title || !parseDate(data.startDate)) return [];
-  const repeat = data.repeat === 'weekly' ? 'weekly' : data.repeat === 'daily' ? 'daily' : '';
+  // repeat 取值：daily 每天 / weekly 每周 / workdays 工作日（周一至周五，不含法定节假日调休）/
+  // monthly 每月固定日期（repeatDay 1-31；月份无对应日期则该月跳过，不钳制到月末）
+  const repeat = ['daily', 'weekly', 'workdays', 'monthly'].includes(data.repeat) ? data.repeat : '';
   if (!repeat || data.active === false) return [];
+  const targetDay = Math.min(31, Math.max(1, Number(data.repeatDay) || parseDate(data.startDate).getDate()));
   const endDate = parseDate(data.endDate) ? data.endDate : rangeEnd;
   const firstDate = data.startDate > rangeStart ? data.startDate : rangeStart;
   const finalDate = endDate < rangeEnd ? endDate : rangeEnd;
   if (firstDate > finalDate) return [];
 
-  let cursor = firstDate;
-  if (repeat === 'weekly') {
-    const targetWeekday = weekday(data.startDate);
-    while (cursor <= finalDate && weekday(cursor) !== targetWeekday) cursor = addDays(cursor, 1);
-  }
-
+  const targetWeekday = repeat === 'weekly' ? weekday(data.startDate) : 0;
   const output = [];
-  const increment = repeat === 'weekly' ? 7 : 1;
+  let cursor = firstDate;
   while (cursor && cursor <= finalDate) {
-    const override = overrides[record.id + '|' + cursor];
-    const overrideData = override && override.data || {};
-    output.push({
-      id: override ? override.id : makeOccurrenceId(record.id, cursor),
-      sourceId: record.id,
-      seriesId: record.id,
-      isVirtual: true,
-      title: String(overrideData.titleSnapshot || data.title),
-      date: cursor,
-      time: String(overrideData.timeSnapshot || data.time || ''),
-      done: Boolean(overrideData.done),
-      skipped: Boolean(overrideData.skipped),
-      pinned: Boolean(data.pinned),
-      reminder: null,
-      updatedAt: Math.max(record.updatedAt, override ? override.updatedAt : 0)
-    });
-    cursor = addDays(cursor, increment);
+    const matches =
+      repeat === 'daily' ? true :
+      repeat === 'weekly' ? weekday(cursor) === targetWeekday :
+      repeat === 'workdays' ? weekday(cursor) <= 5 :
+      parseDate(cursor).getDate() === targetDay;
+    if (matches) {
+      const override = overrides[record.id + '|' + cursor];
+      const overrideData = override && override.data || {};
+      output.push({
+        id: override ? override.id : makeOccurrenceId(record.id, cursor),
+        sourceId: record.id,
+        seriesId: record.id,
+        isVirtual: true,
+        title: String(overrideData.titleSnapshot || data.title),
+        date: cursor,
+        time: String(overrideData.timeSnapshot || data.time || ''),
+        done: Boolean(overrideData.done),
+        skipped: Boolean(overrideData.skipped),
+        pinned: Boolean(data.pinned),
+        reminder: null,
+        updatedAt: Math.max(record.updatedAt, override ? override.updatedAt : 0)
+      });
+    }
+    cursor = addDays(cursor, 1);
   }
   return output;
 }

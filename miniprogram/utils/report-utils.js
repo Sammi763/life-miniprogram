@@ -2,6 +2,10 @@
 const { derivePlanOccurrences, valuesOfRecords } = require('./plan-utils');
 const { buildMemorySummary } = require('./memory-utils');
 const { buildCategoryBudgetProgress } = require('./ledger-utils');
+// 金额显示全应用统一走 finance.formatMoney（整数不带小数、小数去末尾 0），
+// 不能再各页各写一套：这里原先「整数原样、否则两位」会和记账页的 ¥54.5 打架。
+const { formatMoney } = require('./finance');
+const { isEntryDone } = require('./habit-utils');
 
 function monthBounds(month) {
   const match = String(month || '').match(/^(\d{4})-(\d{2})$/);
@@ -28,11 +32,6 @@ function round(value) {
 
 function oneDecimal(value) {
   return Math.round((Number(value) || 0) * 10) / 10;
-}
-
-function formatMoney(value) {
-  const number = round(value);
-  return Number.isInteger(number) ? String(number) : number.toFixed(2);
 }
 
 function sumMoney(records, prefix) {
@@ -66,12 +65,10 @@ function habitSummary(records, bounds) {
   let total = definitions.length * days;
   let done = 0;
   definitions.forEach((definition) => {
-    const target = Number(definition.target) || 1;
     for (let day = 1; day <= days; day++) {
       const date = bounds.start.slice(0, 8) + String(day).padStart(2, '0');
       const entry = entries[definition.id + '|' + date];
-      const value = Number(entry && entry.value) || 0;
-      if (definition.mode === 'check' ? value >= 1 : value >= target) done++;
+      if (isEntryDone(entry, definition)) done++;
     }
   });
   return { total, done, rate: total ? oneDecimal(done * 100 / total) : 0 };
@@ -96,9 +93,15 @@ function mediaSummary(records, bounds) {
 }
 
 function buildSummary(finance, life) {
+  /*
+   * 比率沿用与页面一致的一位小数写法：页面上直接绑定 {{finance.budgetUsed}}%，
+   * 未经 toFixed 时会渲染成「0%」，而这里写 toFixed(1) 会渲染成「0.0%」，
+   * 同一屏的两处百分比就打架了。用 String(Number) 的形式保持两边一致。
+   */
+  const rateText = (value) => String(oneDecimal(value));
   const financeSentence = '本月收入 ¥' + formatMoney(finance.income) + '，支出 ¥' + formatMoney(finance.expense) + '，结余 ¥' + formatMoney(finance.balance) + '。';
-  const budgetSentence = finance.budget > 0 ? '预算已使用 ' + finance.budgetUsed.toFixed(1) + '%。' : '本月尚未设置预算。';
-  const lifeSentence = '习惯达标率 ' + life.habit.rate.toFixed(1) + '%，日程完成率 ' + life.plan.rate.toFixed(1) + '%。';
+  const budgetSentence = finance.budget > 0 ? '预算已使用 ' + rateText(finance.budgetUsed) + '%。' : '本月尚未设置预算。';
+  const lifeSentence = '习惯达标率 ' + rateText(life.habit.rate) + '%，日程完成率 ' + rateText(life.plan.rate) + '%。';
   const weightSentence = life.weight.hasData ? '体重变化 ' + (life.weight.change > 0 ? '+' : '') + life.weight.change.toFixed(1) + ' kg。' : '本月没有体重记录。';
   const mediaSentence = '本月完成 ' + life.media.completed + ' 部书影音' + (life.media.averageRating ? '，平均评分 ' + life.media.averageRating.toFixed(1) + ' 分。' : '。');
   const memorySentence = life.memory.count ? '留下 ' + life.memory.count + ' 条文字记忆，跨越 ' + life.memory.days + ' 天。' : '这个月还没有留下随记。';

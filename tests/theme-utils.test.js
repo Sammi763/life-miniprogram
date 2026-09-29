@@ -21,7 +21,7 @@ global.getCurrentPages = () => [{
 
 const theme = require('../miniprogram/utils/theme');
 
-assert.strictEqual(theme.THEMES.length, 4, '应提供四套可选主题');
+assert.strictEqual(theme.THEMES.length, 5, '应提供四套浅色主题加夜间主题');
 assert.strictEqual(theme.getThemeId(), 'paper', '应优先恢复本机主题选择');
 assert.strictEqual(theme.getThemeId('sky'), 'sky', '已知主题应可被显式选择');
 assert.strictEqual(theme.getThemeId('unknown'), 'forest', '未知主题必须安全回退到默认主题');

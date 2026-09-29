@@ -1,71 +1,76 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，改动已暂存本机</text><text bindtap="onPullDownRefresh" style="font-weight:600">重试</text></view>
+<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，改动已暂存本机</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
 
 <view class="card hero-card">
-  <view class="card-title"><text>身体趋势</text><text class="more" bindtap="openSettings">身高与目标设置 ›</text></view>
+  <view class="card-title"><text>身体趋势</text><view class="more" bindtap="openSettings" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">身高与目标设置 ›</view></view>
   <view class="hero-values"><view><view class="sub">最新体重</view><text>{{latest ? latest.weightText : '—'}}</text><text>kg</text></view><view><view class="sub">体脂</view><text>{{latest ? latest.bodyfatText : '—'}}</text></view><view><view class="sub">BMI</view><text>{{bmi}}</text><text class="{{bmiClass}}">{{bmiLabel}}</text></view></view>
   <view class="target-line"><text>目标体重 {{targetWeight || '未设置'}} kg</text><text wx:if="{{targetDiff !== '—'}}">{{targetDiff > 0 ? '还需减 ' : '已低于目标 '}}{{targetDiff > 0 ? targetDiff : -targetDiff}} kg</text></view>
   <view class="bar"><view class="bar-fill" style="width: {{targetProgress}}%"></view></view>
 </view>
 
 <view class="card">
-  <view class="card-title"><text>体重曲线</text><view class="range-tabs"><text class="{{range === 7 ? 'on' : ''}}" bindtap="setRange" data-range="7">7 日</text><text class="{{range === 30 ? 'on' : ''}}" bindtap="setRange" data-range="30">30 日</text></view></view>
-  <canvas canvas-id="weightChart" class="weight-chart" />
+  <view class="card-title"><text>体重曲线</text><view class="range-tabs"><view class="{{range === 7 ? 'on' : ''}}" bindtap="setRange" data-range="7" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">7 日</view><view class="{{range === 30 ? 'on' : ''}}" bindtap="setRange" data-range="30" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">30 日</view></view></view>
+  <canvas type="2d" id="weightChart" class="weight-chart" />
   <view class="chart-legend"><view class="legend-item"><view class="legend-weight"></view><text>体重</text></view><view class="legend-item"><view class="legend-average"></view><text>7 日均线</text></view></view>
 </view>
 
-<view class="quick-actions"><button class="btn btn-ghost" bindtap="openWeight">＋ 记体重</button><button class="btn btn-ghost" bindtap="openDeficit">＋ 记热量</button></view>
+<view class="quick-actions"><button class="btn btn-ghost" bindtap="openWeight" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">＋ 记体重</button><button class="btn btn-ghost" bindtap="openDeficit" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">＋ 记热量</button></view>
 
 <view class="card">
   <view class="card-title"><text>近 7 日热量缺口</text><text class="{{deficitTotal >= 0 ? 'money-in' : 'money-out'}}">{{deficitTotal >= 0 ? '+' : ''}}{{deficitTotal}} kcal</text></view>
   <view wx:if="{{deficits.length === 0}}" class="empty">记录每日摄入和消耗，观察自己的节奏</view>
-  <view wx:for="{{deficits}}" wx:key="id" class="deficit-row"><text>{{item.dateText}}</text><text>摄入 {{item.intake}} · 消耗 {{item.burned}}</text><text class="{{item.deficit >= 0 ? 'money-in' : 'money-out'}}">{{item.deficit >= 0 ? '+' : ''}}{{item.deficit}}</text><text class="delete-action" catchtap="removeDeficit" data-id="{{item.id}}">删除</text></view>
+  <view wx:for="{{deficits}}" wx:key="id" class="deficit-row" bindtap="editDeficit" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><text>{{item.dateText}}</text><text>摄入 {{item.intake}} · 消耗 {{item.burned}}</text><text class="{{item.deficit >= 0 ? 'money-in' : 'money-out'}}">{{item.deficit >= 0 ? '+' : ''}}{{item.deficit}}</text></view>
 </view>
 
 <view class="card">
-  <view class="card-title"><text>本周运动计划</text><text class="more" bindtap="openPlan">新增 ›</text></view>
+  <view class="card-title"><text>本周运动计划</text><view class="more" bindtap="openPlan" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">新增 ›</view></view>
   <view wx:if="{{plans.length === 0}}" class="empty">给这一周安排一点可完成的运动</view>
-  <view wx:for="{{plans}}" wx:key="id" class="exercise-row"><view class="exercise-check {{item.done ? 'exercise-check-on' : ''}}" bindtap="togglePlan" data-id="{{item.id}}">✓</view><view class="exercise-main {{item.done ? 'plan-done' : ''}}" bindtap="editPlan" data-id="{{item.id}}"><text>{{item.day}}</text><text>{{item.content}}</text></view><text class="delete-action" catchtap="removePlan" data-id="{{item.id}}">删除</text></view>
+  <view wx:for="{{plans}}" wx:key="id" class="exercise-row"><view class="exercise-check {{item.done ? 'exercise-check-on' : ''}}" bindtap="togglePlan" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">✓</view><view class="exercise-main {{item.done ? 'plan-done' : ''}}" bindtap="editPlan" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><text>{{item.day}}</text><text>{{item.content}}</text></view></view>
 </view>
 
 <view class="card weight-list-card">
   <view class="card-title"><text>最近记录</text></view>
   <view wx:if="{{chartEmpty}}" class="empty">还没有体重记录</view>
-  <view wx:for="{{latestRows}}" wx:key="id" class="weight-row" bindtap="editWeight" data-id="{{item.id}}"><text>{{item.date}}</text><text class="weight-value">{{item.weightText}} kg</text><text class="sub">体脂 {{item.bodyfatText}}</text><text class="delete-action" catchtap="removeWeight" data-id="{{item.id}}">删除</text></view>
+  <view wx:for="{{latestRows}}" wx:key="id" class="weight-row" bindtap="editWeight" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><text>{{item.date}}</text><text class="weight-value">{{item.weightText}} kg</text><text class="sub">体脂 {{item.bodyfatText}}</text></view>
 </view>
 
 <view wx:if="{{weightSheet}}" class="mask" bindtap="closeWeight"></view>
 <view wx:if="{{weightSheet}}" class="sheet" catchtap="noop">
   <view class="sheet-title">{{weightForm.id ? '编辑体重' : '记录体重'}}</view>
   <view class="field"><view class="field-label">日期</view><picker mode="date" value="{{weightForm.date}}" bindchange="onWeightDate"><view class="picker-value">{{weightForm.date}}</view></picker></view>
-  <view class="field"><view class="field-label">体重（kg）</view><input type="digit" value="{{weightForm.weight}}" bindinput="onWeight" placeholder="如 72.5" /></view>
-  <view class="field"><view class="field-label">体脂（%）可选</view><input type="digit" value="{{weightForm.bodyfat}}" bindinput="onBodyfat" placeholder="如 20.1" /></view>
-  <button class="btn btn-primary" bindtap="saveWeight">保存</button>
+  <view class="field"><view class="field-label">体重（kg）</view><input type="digit" value="{{weightForm.weight}}" bindinput="onWeight" placeholder="如 72.5" confirm-type="next" cursor-spacing="24" /></view>
+  <view class="field"><view class="field-label">体脂（%）可选</view><input type="digit" value="{{weightForm.bodyfat}}" bindinput="onBodyfat" placeholder="如 20.1" confirm-type="done" cursor-spacing="24" /></view>
+  <button class="btn btn-primary" disabled="{{saving}}" bindtap="saveWeight" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{saving ? '保存中…' : '保存'}}</button>
+  <view wx:if="{{weightForm.id}}" class="sheet-delete tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="removeWeightFromSheet">删除这条体重记录</view>
 </view>
 
 <view wx:if="{{deficitSheet}}" class="mask" bindtap="closeDeficit"></view>
 <view wx:if="{{deficitSheet}}" class="sheet" catchtap="noop">
-  <view class="sheet-title">记录热量</view>
+  <view class="sheet-title">{{deficitForm.id ? '编辑热量' : '记录热量'}}</view>
   <view class="field"><view class="field-label">日期</view><picker mode="date" value="{{deficitForm.date}}" bindchange="onDeficitDate"><view class="picker-value">{{deficitForm.date}}</view></picker></view>
-  <view class="field"><view class="field-label">摄入（kcal）</view><input type="number" value="{{deficitForm.intake}}" bindinput="onIntake" placeholder="如 1800" /></view>
-  <view class="field"><view class="field-label">消耗（kcal）</view><input type="number" value="{{deficitForm.burned}}" bindinput="onBurned" placeholder="如 2200" /></view>
-  <button class="btn btn-primary" bindtap="saveDeficit">保存</button>
+  <view class="field"><view class="field-label">摄入（kcal）</view><input type="number" value="{{deficitForm.intake}}" bindinput="onIntake" placeholder="如 1800" confirm-type="next" cursor-spacing="24" /></view>
+  <view class="field"><view class="field-label">消耗（kcal）</view><input type="number" value="{{deficitForm.burned}}" bindinput="onBurned" placeholder="如 2200" confirm-type="done" cursor-spacing="24" /></view>
+  <button class="btn btn-primary" disabled="{{saving}}" bindtap="saveDeficit" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{saving ? '保存中…' : '保存'}}</button>
+  <view wx:if="{{deficitForm.id}}" class="sheet-delete tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="removeDeficitFromSheet">删除这条热量记录</view>
 </view>
 
 <view wx:if="{{planSheet}}" class="mask" bindtap="closePlan"></view>
 <view wx:if="{{planSheet}}" class="sheet" catchtap="noop">
   <view class="sheet-title">{{planForm.id ? '编辑运动计划' : '新增运动计划'}}</view>
   <view class="field"><view class="field-label">星期</view><picker mode="selector" range="{{weekdays}}" range-key="label" value="{{planForm.weekday - 1}}" bindchange="onPlanDay"><view class="picker-value">{{planDayLabel}}</view></picker></view>
-  <view class="field"><view class="field-label">运动项</view><input value="{{planForm.content}}" bindinput="onPlanContent" maxlength="40" placeholder="如：快走 30 分钟" /></view>
-  <view class="switch-row"><text>本周已完成</text><switch checked="{{planForm.done}}" color="#39745D" bindchange="onPlanDone" /></view>
-  <button class="btn btn-primary" bindtap="savePlan">保存</button>
+  <view class="field"><view class="field-label">运动项</view><input value="{{planForm.content}}" bindinput="onPlanContent" maxlength="40" placeholder="如：快走 30 分钟" confirm-type="done" cursor-spacing="24" /></view>
+  <view class="switch-row"><text>本周已完成</text><switch checked="{{planForm.done}}" color="{{themeAccent}}" bindchange="onPlanDone" /></view>
+  <button class="btn btn-primary" disabled="{{saving}}" bindtap="savePlan" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{saving ? '保存中…' : '保存'}}</button>
+  <view wx:if="{{planForm.id}}" class="sheet-delete tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="removePlanFromSheet">删除这项运动计划</view>
 </view>
 
 <view wx:if="{{settingsSheet}}" class="mask" bindtap="closeSettings"></view>
 <view wx:if="{{settingsSheet}}" class="sheet" catchtap="noop">
   <view class="sheet-title">身体设置</view>
-  <view class="field"><view class="field-label">身高（cm）</view><input type="digit" value="{{heightInput}}" bindinput="onHeight" placeholder="如 175" /></view>
-  <view class="field"><view class="field-label">目标体重（kg）</view><input type="digit" value="{{targetWeightInput}}" bindinput="onTargetWeight" placeholder="如 65" /></view>
-  <button class="btn btn-primary" bindtap="saveSettings">保存</button>
+  <view class="field"><view class="field-label">身高（cm）</view><input type="digit" value="{{heightInput}}" bindinput="onHeight" placeholder="如 175" confirm-type="next" cursor-spacing="24" /></view>
+  <view class="field"><view class="field-label">目标体重（kg）</view><input type="digit" value="{{targetWeightInput}}" bindinput="onTargetWeight" placeholder="如 65" confirm-type="done" cursor-spacing="24" /></view>
+  <button class="btn btn-primary" disabled="{{saving}}" bindtap="saveSettings" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{saving ? '保存中…' : '保存'}}</button>
 </view>
+
+<undo-bar show="{{undoShow}}" text="{{undoText}}" bind:undo="onUndoTap" />
 </view>

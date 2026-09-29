@@ -1,9 +1,11 @@
 const api = require('../../utils/api');
 const sync = require('../../utils/sync');
 const { buildTextAvatar } = require('../../utils/text-avatar');
+const { BUILD_VERSION } = require('../../config/build');
 const theme = require('../../utils/theme');
+const share = require('../../utils/share');
 
-const TERMS_VERSION = 'v1';
+const TERMS_VERSION = 'v2';
 const TERMS_KEY = 'wb_life_terms_' + TERMS_VERSION;
 
 function hasAcceptedTerms() {
@@ -20,39 +22,59 @@ function profileData(profile) {
   return {
     nickname: value.nickname || '',
     avatarText: avatar.label,
-    avatarTone: avatar.tone,
-    hasPhone: Boolean(value.hasPhone),
-    phoneText: value.phone || '未绑定手机号'
+    avatarTone: avatar.tone
   };
 }
 
-function connectionErrorMessage(error) {
-  const message = String((error && error.message) || '');
-  if (/connection refused|err_connection_refused|econnrefused/i.test(message)) {
-    return '暂时无法连接服务，请稍后重试。';
-  }
-  return '暂时无法连接服务，请检查网络后重试。';
+/* 传输类失败给可执行的下一步，而不是只报「失败」 */
+function loginErrorMessage(error) {
+  const category = error && error.category;
+  if (category === 'network_reset') return '连接被中断，已自动重试仍未成功。请切换 WiFi / 移动网络后重新登录。';
+  if (category === 'network_refused') return '服务器拒绝了连接，已自动重试仍未成功。请切换网络后重新登录。';
+  if (category === 'network_timeout') return '连接服务器超时，已自动重试仍未成功。请检查网络后重新登录。';
+  if (category === 'wx_login_failed') return '暂时无法获取微信登录凭证，请重新登录。';
+  if (category === 'http_401') return '微信登录校验失败，请稍后重新登录。';
+  if (category === 'http_429') return '登录请求过于频繁，请稍后再试。';
+  if (category && /^http_5\d\d$/.test(category)) return '登录服务暂时不可用，请稍后重新登录。';
+  return '登录失败，请检查网络后重新登录。';
+}
+
+/* 自检结论：先区分「服务端整体不可达」与「仅登录失败」，再决定给什么建议 */
+function diagnosticMessage(error) {
+  const category = error && error.category;
+  if (category === 'network_reset') return '服务器连接被中断，当前网络到服务器不通。请切换 WiFi / 移动网络后重试。';
+  if (category === 'network_refused') return '服务器拒绝连接，当前网络到服务器不通。请切换网络后重试。';
+  if (category === 'network_timeout') return '自检请求超时，网络到服务器不通。请切换网络后重试。';
+  if (category && /^http_5\d\d$/.test(category)) return '服务器可达但返回异常，稍后重试即可。';
+  if (category && /^http_4\d\d$/.test(category)) return '服务器可达但拒绝了自检请求，请稍后重试。';
+  return '无法确认服务器状态，请检查网络后重试。';
 }
 
 Page({
   data: {
     loggedIn: false,
     loggingIn: false,
+    /* 本地已有会话、正在校验并准备自动进入时为 true：展示静默过渡页，避免登录卡闪现后跳转 */
+    entering: false,
+    loginFailed: false,
+    loginStatus: '',
     saving: false,
-    phoneLoading: false,
     editingProfile: false,
     serverError: '',
+    diagnosing: false,
+    diagnostic: '',
+    diagnosticFailed: false,
+    buildVersion: BUILD_VERSION,
     nickname: '',
     avatarText: '生',
     avatarTone: 'avatar-tone-0',
-    hasPhone: false,
-    phoneText: '未绑定手机号',
     termsAccepted: false,
     existingSessionNeedsTerms: false
   },
 
   onLoad(options) {
     theme.applyToPage(this);
+    share.enableShareMenu();
     const editingProfile = Boolean(options && options.edit === '1');
     const cached = api.getProfile();
     const runtime = api.getRuntimeConfig();
@@ -63,21 +85,27 @@ Page({
       ...profileData(cached)
     });
     if (!api.getToken()) return;
+    this.setData({ entering: !editingProfile });
     api.validateSession()
       .then((profile) => {
-        this.setData({ loggedIn: true, ...profileData(profile) });
-        if (editingProfile) return;
+        if (editingProfile) {
+          this.setData({ entering: false, loggedIn: true, ...profileData(profile) });
+          return;
+        }
         if (!this.data.termsAccepted) {
-          this.setData({ loggedIn: false, existingSessionNeedsTerms: true, serverError: '继续使用前，请先阅读并同意用户协议与隐私政策。' });
+          this.setData({ entering: false, existingSessionNeedsTerms: true, serverError: '继续使用前，请先阅读并同意用户协议与隐私政策。' });
           return;
         }
         sync.init();
-        wx.switchTab({ url: '/pages/today/today' });
+        wx.switchTab({ url: '/pages/today/today', fail: () => this.setData({ entering: false }) });
       })
       .catch((error) => {
-        this.setData({ serverError: connectionErrorMessage(error) });
+        this.setData({ entering: false, serverError: loginErrorMessage(error), loginFailed: true });
       });
   },
+
+  onShareAppMessage: share.onShareAppMessage('login'),
+  onShareTimeline: share.onShareTimeline('login'),
 
   onLogin() {
     if (this.data.loggingIn) return;
@@ -89,22 +117,39 @@ Page({
       this.setData({ serverError: '服务暂未配置完成，请稍后再试。' });
       return;
     }
-    this.setData({ loggingIn: true, serverError: '' });
-    wx.showLoading({ title: '登录中' });
-    api.login()
+    this.setData({ loggingIn: true, loginFailed: false, loginStatus: '正在获取微信登录凭证…', serverError: '', diagnostic: '', diagnosticFailed: false });
+    wx.showLoading({ title: '微信登录中', mask: true });
+    let completionToast = null;
+    api.login({
+      onRetry: ({ retry, maxRetries }) => this.setData({ loginStatus: `网络连接中断，正在重新获取凭证并重试（${retry}/${maxRetries}）…` })
+    })
       .then((profile) => {
         rememberTerms();
-        this.setData({ loggedIn: true, ...profileData(profile) });
-        wx.hideLoading();
-        wx.showToast({ title: '登录成功', icon: 'success' });
+        this.setData({ loggedIn: true, loginStatus: '', loginFailed: false, ...profileData(profile) });
+        completionToast = { title: '登录成功', icon: 'success' };
       })
       .catch((error) => {
-        const serverError = connectionErrorMessage(error);
-        this.setData({ serverError });
-        wx.hideLoading();
-        wx.showToast({ title: serverError.indexOf('未启动') >= 0 ? '本地后端未启动' : '登录失败', icon: 'none' });
+        this.setData({ serverError: loginErrorMessage(error), loginStatus: '', loginFailed: true });
+        completionToast = { title: '登录失败，可重新点击登录', icon: 'none' };
       })
-      .finally(() => this.setData({ loggingIn: false }));
+      .finally(() => {
+        wx.hideLoading();
+        this.setData({ loggingIn: false });
+        if (completionToast) wx.showToast(completionToast);
+      });
+  },
+
+  /*
+   * 只读自检：只探测 /api/health，不登录、不写本地数据、不发敏感信息。
+   * 结论给用户，也方便报障时说清「域名不通」还是「登录接口不通」。
+   */
+  onDiagnose() {
+    if (this.data.diagnosing) return;
+    this.setData({ diagnosing: true, diagnostic: '', diagnosticFailed: false });
+    api.checkHealth()
+      .then(() => this.setData({ diagnostic: '服务器可达。请稍后重新点击登录；若仍失败，多为微信登录凭证或登录接口问题。', diagnosticFailed: false }))
+      .catch((error) => this.setData({ diagnostic: diagnosticMessage(error), diagnosticFailed: true }))
+      .finally(() => this.setData({ diagnosing: false }));
   },
 
   onNickname(event) {
@@ -121,37 +166,6 @@ Page({
   openLegal(event) {
     const doc = event.currentTarget.dataset.doc || 'service';
     wx.navigateTo({ url: '/pages/legal/legal?doc=' + encodeURIComponent(doc) });
-  },
-
-  onGetPhoneNumber(event) {
-    const detail = event.detail || {};
-    if (!detail.code) {
-      wx.showToast({ title: '你暂未授权手机号', icon: 'none' });
-      return;
-    }
-    if (this.data.phoneLoading) return;
-    this.setData({ phoneLoading: true });
-    wx.showLoading({ title: '绑定手机号' });
-    api.requirePrivacyAuthorization()
-      .then((authorized) => {
-        if (!authorized) throw new Error('privacy_not_authorized');
-        return api.updateProfile({ phoneCode: detail.code });
-      })
-      .then((profile) => {
-        this.setData(profileData(profile));
-        wx.hideLoading();
-        wx.showToast({ title: '手机号已绑定', icon: 'success' });
-      })
-      .catch((error) => {
-        const title = error && error.message === 'privacy_not_authorized'
-          ? '同意隐私指引后才可授权手机号'
-          : error && error.code === 'phone_exchange_failed'
-          ? '手机号授权失败，请用真机重试'
-          : '手机号保存失败，请重试';
-        wx.hideLoading();
-        wx.showToast({ title, icon: 'none' });
-      })
-      .finally(() => this.setData({ phoneLoading: false }));
   },
 
   completeProfile() {

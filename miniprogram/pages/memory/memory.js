@@ -1,5 +1,6 @@
 const store = require('../../utils/store');
 const sync = require('../../utils/sync');
+const ui = require('../../utils/ui');
 const {
   MOODS,
   filterMemories,
@@ -10,6 +11,7 @@ const {
   recordItems
 } = require('../../utils/memory-utils');
 const theme = require('../../utils/theme');
+const share = require('../../utils/share');
 
 const MOOD_OPTIONS = [
   { key: '', label: '不标记' },
@@ -20,6 +22,13 @@ const MOOD_OPTIONS = [
   { key: 'low', label: '低落' }
 ];
 const MOOD_LABELS = Object.fromEntries(MOOD_OPTIONS.map((item) => [item.key, item.label]));
+
+/*
+ * 时间线分批渲染：随记会随使用累积到上千条，一次性把全部内容 setData 给渲染层会撑大
+ * 单次数据量（体积过大时小程序会告警并明显掉帧）。这里按「累计条数」分批下发，
+ * 顶部统计仍然是筛选后的完整条数与天数，筛选语义不变。
+ */
+const TIMELINE_PAGE_SIZE = 60;
 
 function pad(value) { return String(value).padStart(2, '0'); }
 function nowParts() {
@@ -65,12 +74,14 @@ Page({
     composerShow: false,
     form: emptyForm(),
     restoredDraft: false,
-    undoShow: false
+    undoShow: false,
+    hasMore: false,
+    shownCount: 0
   },
   unsub: null,
-  undoRecord: null,
-  undoTimer: null,
   draftTimer: null,
+  /* 已下发的随记条数上限；只在筛选变化时回到第一批，同步拉取不会重置它 */
+  visibleCount: TIMELINE_PAGE_SIZE,
 
   onLoad(options) {
     theme.applyToPage(this);
@@ -79,13 +90,18 @@ Page({
     if (options && options.id) this.openEditById(options.id);
     else if (options && options.compose === '1') this.openComposer();
   },
-  onShow() { theme.applyToPage(this); this.render(); },
+  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); },
+  onShareAppMessage: share.onShareAppMessage('memory'),
+  onShareTimeline: share.onShareTimeline('memory'),
   onUnload() {
     this.unsub && this.unsub();
-    clearTimeout(this.undoTimer);
     clearTimeout(this.draftTimer);
+    clearTimeout(this.__undoTimer);
   },
+  retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() { sync.pull().then(() => wx.stopPullDownRefresh()).catch(() => wx.stopPullDownRefresh()); },
+  /* 滚到底自动加载更早的随记；底部按钮保留作为兜底 */
+  onReachBottom() { if (this.data.hasMore) this.loadMore(); },
 
   render() {
     const records = store.state.records.memories || {};
@@ -95,27 +111,52 @@ Page({
       tag: this.data.selectedTag,
       date: this.data.selectedDate
     };
-    const groups = groupMemoriesByDate(records, options).map((group) => ({
-      ...group,
-      label: dateLabel(group.date),
-      items: group.items.map((item) => ({
-        ...item,
-        time: item.occurredAt.slice(11),
-        moodText: MOOD_LABELS[item.mood] || '',
-        tagsText: item.tags.join(' · ')
-      }))
-    }));
+    const allGroups = groupMemoriesByDate(records, options);
+    const total = filterMemories(records, options).length;
+    /*
+     * 按天顺序累计下发，直到用完预算；同一天也可能超过预算，用 slice 截断，
+     * 避免「一天写了 200 条」把整天内容一次性推给渲染层。
+     */
+    let budget = Math.max(TIMELINE_PAGE_SIZE, Number(this.visibleCount) || 0);
+    let shown = 0;
+    const groups = [];
+    for (const group of allGroups) {
+      if (budget <= 0) break;
+      const items = group.items.slice(0, budget);
+      budget -= items.length;
+      shown += items.length;
+      groups.push({
+        ...group,
+        label: dateLabel(group.date),
+        items: items.map((item) => ({
+          ...item,
+          time: item.occurredAt.slice(11),
+          moodText: MOOD_LABELS[item.mood] || '',
+          tagsText: item.tags.join(' · ')
+        }))
+      });
+    }
     const tagCounts = {};
     recordItems(records).forEach((item) => item.tags.forEach((tag) => { tagCounts[tag] = (tagCounts[tag] || 0) + 1; }));
     const tags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a] || a.localeCompare(b, 'zh-Hans-CN')).slice(0, 12);
     this.setData({
       offline: store.state.syncState === 'offline',
       groups,
-      total: filterMemories(records, options).length,
-      dayCount: groups.length,
+      hasMore: shown < total,
+      shownCount: shown,
+      /* 统计口径保持不变：始终是筛选后的完整条数与天数 */
+      total,
+      dayCount: allGroups.length,
       tags
     });
   },
+
+  loadMore() {
+    this.visibleCount = (Number(this.visibleCount) || TIMELINE_PAGE_SIZE) + TIMELINE_PAGE_SIZE;
+    this.render();
+  },
+  /* 筛选条件变化时回到第一批，避免「换了筛选却还停在很深的页码」 */
+  resetTimeline() { this.visibleCount = TIMELINE_PAGE_SIZE; this.render(); },
 
   openComposer() {
     const form = emptyForm();
@@ -190,6 +231,7 @@ Page({
     });
     if (!data.content) return wx.showToast({ title: '写下一点此刻的感受吧', icon: 'none' });
     if (!data.occurredAt) return wx.showToast({ title: '请选择发生时间', icon: 'none' });
+    if (ui.isRepeatedTap(this, 'memory-save', 800)) return;
     sync.upsert('memories', data, form.id || undefined);
     clearDraft(form.id || 'new');
     this.setData({ composerShow: false, restoredDraft: false });
@@ -199,32 +241,27 @@ Page({
     const id = event.currentTarget.dataset.id;
     const record = store.state.records.memories && store.state.records.memories[id];
     if (!record || record.deletedAt || !record.data) return;
-    this.undoRecord = { id, data: record.data };
+    const undoData = record.data;
     sync.remove('memories', id);
-    clearTimeout(this.undoTimer);
-    this.undoTimer = setTimeout(() => { this.undoRecord = null; this.setData({ undoShow: false }); }, 5000);
-    this.setData({ undoShow: true });
-    wx.showToast({ title: '已删除，可在 5 秒内撤销', icon: 'none' });
+    ui.armUndo(this, {
+      onUndo: () => {
+        sync.upsert('memories', undoData, id);
+        wx.showToast({ title: '已恢复', icon: 'success' });
+      }
+    });
   },
-  undoDelete() {
-    if (!this.undoRecord) return;
-    sync.upsert('memories', this.undoRecord.data, this.undoRecord.id);
-    this.undoRecord = null;
-    clearTimeout(this.undoTimer);
-    this.setData({ undoShow: false });
-    wx.showToast({ title: '已恢复', icon: 'success' });
-  },
-  onKeyword(event) { this.setData({ keyword: event.detail.value }); this.render(); },
+  onUndoTap() { ui.performUndo(this); },
+  onKeyword(event) { this.setData({ keyword: event.detail.value }); this.resetTimeline(); },
   setFilterMood(event) {
     const mood = event.currentTarget.dataset.mood;
     this.setData({ selectedMood: mood === this.data.selectedMood ? '' : mood });
-    this.render();
+    this.resetTimeline();
   },
   setFilterTag(event) {
     const tag = event.currentTarget.dataset.tag;
     this.setData({ selectedTag: tag === this.data.selectedTag ? '' : tag });
-    this.render();
+    this.resetTimeline();
   },
-  clearFilters() { this.setData({ keyword: '', selectedMood: '', selectedTag: '', selectedDate: '' }); this.render(); },
+  clearFilters() { this.setData({ keyword: '', selectedMood: '', selectedTag: '', selectedDate: '' }); this.resetTimeline(); },
   goSearch() { wx.navigateTo({ url: '/pages/search/search?kind=memory' }); }
 });

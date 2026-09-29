@@ -88,7 +88,11 @@ try {
   }, '账户间转账应同时记录转出和转入账户，而不伪装成支出');
 
   page.openAccountEdit.call(page, { currentTarget: { dataset: { id: 'huabei' } } });
+  /* 删除已移入编辑弹层内（removeAccount），删除后立即执行并挂上撤销窗口 */
+  page.removeAccount.call(page);
+  clearTimeout(page.__undoTimer);
   assert.deepStrictEqual(writes.pop(), ['remove', 'accounts', 'huabei'], '账户删除应走同步墓碑协议');
+  assert.strictEqual(page.data.undoShow, true, '删除后应浮出撤销条');
 } finally {
   store.state.records.accounts = originalAccounts;
   store.state.records.money = originalMoney;

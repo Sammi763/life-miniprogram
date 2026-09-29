@@ -55,12 +55,13 @@ assert.strictEqual(AI_SECRET_NAME, 'deepseek_api_key');
     },
     config: {
       aiSecretEncryptionKey: 'test-master-key',
-      ai: { enabled: true, provider: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-v4-flash', maxTokens: 120 }
+      ai: { enabled: true, provider: 'deepseek', baseUrl: 'https://api.deepseek.com', model: 'deepseek-flash', maxTokens: 120 }
     },
     fetchImpl: async (url, options) => {
       requestCount++;
       assert.strictEqual(url, 'https://api.deepseek.com/chat/completions');
       assert.strictEqual(options.headers.Authorization, 'Bearer test-key');
+      assert.strictEqual(JSON.parse(options.body).model, 'deepseek-flash');
       assert.doesNotMatch(options.body, /test-master-key/);
       assert.doesNotMatch(options.body, /999999|招商银行/);
       return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '今天先完成散步，再给自己留一点安静时间。' } }] }) };

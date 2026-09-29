@@ -1,4 +1,5 @@
-.today-hero { margin: 30rpx 24rpx 20rpx; padding: 34rpx 32rpx 26rpx; border-radius: 32rpx; color: #F7FCF8; background: linear-gradient(140deg, var(--hero-start) 0%, var(--hero-end) 100%); box-shadow: 0 20rpx 44rpx var(--hero-shadow); }
+.theme-page { padding-top:30rpx; }
+.today-hero { margin: 0 24rpx 20rpx; padding: 34rpx 32rpx 26rpx; border-radius: 32rpx; color: #F7FCF8; background: linear-gradient(140deg, var(--hero-start) 0%, var(--hero-end) 100%); box-shadow: 0 20rpx 44rpx var(--hero-shadow); }
 .today-hero-meta { display:flex; align-items:flex-start; justify-content:space-between; }
 .hero-kicker { color:rgba(247,252,248,.62); font-size:20rpx; letter-spacing:2.2rpx; }
 .hero-date { margin-top:4rpx; font-size:30rpx; font-weight:600; }
@@ -46,50 +47,42 @@
 .bar-fill { height: 100%; background: var(--terra); border-radius: 999rpx; }
 .bar-hot { background: var(--red); }
 
-.habit-item {
-  display: flex; align-items: center;
-  padding: 20rpx 0;
-  border-bottom: 1rpx solid var(--line);
-}
-.habit-item:last-child { border-bottom: none; }
-.habit-dot {
-  width: 28rpx; height: 28rpx; border-radius: 50%;
-  border: 3rpx solid var(--line); margin-right: 20rpx; flex-shrink: 0;
-}
-.habit-dot-on { background: var(--green); border-color: var(--green); }
-.habit-main { flex: 1; }
-.habit-act {
-  color: var(--terra); font-size: 26rpx;
-  padding: 10rpx 20rpx; border-radius: 999rpx; background: var(--terra-soft);
-}
-
-.plan-item { display: flex; align-items: flex-start; padding: 18rpx 0; }
-.plan-check {
-  width: 44rpx; height: 44rpx; border-radius: 12rpx;
-  border: 2rpx solid var(--line); color: transparent;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 26rpx; margin-right: 20rpx; flex-shrink: 0;
-}
-.plan-check-on { background: var(--green); border-color: var(--green); color: #fff; }
-.plan-main { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 12rpx; }
-.plan-done { text-decoration: line-through; color: var(--ink-2); }
-.plan-overdue .plan-main > view:first-child { color: var(--red); }
-.plan-tag {
-  font-size: 20rpx; color: var(--red);
-  background: #FCEBEB; border-radius: 8rpx; padding: 2rpx 12rpx;
-}
-.focus-task { background:linear-gradient(135deg, var(--surface), var(--accent-wash)); }
-.focus-task-row { display: flex; justify-content: space-between; align-items: center; padding-top: 8rpx; }
-.focus-task-title { color: var(--ink); font-size: 32rpx; font-weight: 600; margin-bottom: 8rpx; }
-.focus-task-action { flex-shrink: 0; margin-left: 20rpx; color: #FFF; background: var(--terra); border-radius: 999rpx; padding: 12rpx 22rpx; font-size: 24rpx; }
-.today-queue-row { display: flex; align-items: center; min-height: 92rpx; border-top: 1rpx solid var(--line); }
+.today-queue-row { display: flex; align-items: center; min-height: 92rpx; border-top: 1rpx solid var(--line); transition: opacity 200ms ease, transform 200ms ease; }
+/* 完成中的行：先淡出右移，再从队列移除 */
+.queue-finishing { opacity: 0; transform: translateX(28rpx); }
 .queue-main { display: flex; align-items: center; flex: 1; min-width: 0; padding: 14rpx 0; }
 .queue-kind { flex-shrink:0; width:58rpx; padding:7rpx 0; margin-right:16rpx; border-radius:10rpx; text-align:center; color:var(--ink-2); background:var(--surface); font-size:20rpx; }
 .queue-kind-on { color: var(--terra); background: var(--terra-soft); }
 .queue-copy { flex: 1; min-width: 0; }
 .queue-copy > view:first-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .queue-action { margin-left: 16rpx; color: var(--terra); font-size: 24rpx; }
-.queue-pin { flex-shrink:0; margin-left:18rpx; padding:12rpx 0 12rpx 14rpx; color:#8A968E; font-size:21rpx; }
+/* 置顶独立热区：加左边框分隔 + 加大触控面积，避免误触 */
+.queue-pin { flex-shrink:0; margin-left:16rpx; padding:20rpx 0 20rpx 22rpx; border-left:1rpx solid var(--line); color:var(--ink-2); font-size:22rpx; }
 .queue-overdue { color: var(--red); }
-
-.shop-item { padding: 12rpx 0; color: var(--ink); }
+.value-steps { margin-bottom: 26rpx; }
+/* 首次使用「三步开始」：非强制，出现任一条核心记录后自动消失 */
+.hero-first { margin-top: 26rpx; }
+.hero-first-title { font-size: 30rpx; font-weight: 600; color: var(--ink); margin-bottom: 18rpx; }
+.hero-first-steps { display: flex; flex-direction: column; gap: 12rpx; }
+.hero-step {
+  display: flex; align-items: center; gap: 18rpx;
+  background: var(--surface); border: 1rpx solid var(--line);
+  border-radius: 18rpx; padding: 20rpx 22rpx;
+}
+.hero-step-num {
+  width: 44rpx; height: 44rpx; border-radius: 50%;
+  background: var(--terra-soft); color: var(--terra);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 26rpx; font-weight: 600; flex-shrink: 0;
+}
+.hero-step-name { font-size: 28rpx; color: var(--ink); }
+/* 今日待处理卡：逾期徽标 */
+.title-side { display: flex; align-items: center; gap: 14rpx; }
+.overdue-badge {
+  font-size: 20rpx; color: var(--red);
+  background: var(--danger-soft);
+  border-radius: 8rpx; padding: 2rpx 10rpx;
+}
+/* 本月支出卡：预算行可点进入「我的」设置 */
+.budget-tap { display: flex; justify-content: space-between; align-items: center; margin-top: 6rpx; }
+.budget-tap-hint { font-size: 22rpx; color: var(--ink-2); }
