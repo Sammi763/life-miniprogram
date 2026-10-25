@@ -18,7 +18,10 @@
 - [ ] 在微信后台配置 request/socket 合法域名 `https://wx.yzflab.top` 和 `wss://wx.yzflab.top` 以及业务域名（如后续实际使用）；不配置 IP 和本地地址。
 - [ ] 使用 [mysql-production-init.sql.example](../server/deploy/mysql-production-init.sql.example) 创建低权限运行账号。由独立迁移账号执行 `npm run db:migrate`，生产服务保持 `DB_AUTO_CREATE=0` 和 `DB_RUN_MIGRATIONS=0`。
 - [ ] 安装并启用 `life-sync.service`、`life-backup.service`、`life-backup.timer`；确认 `systemctl status` 和 `systemctl list-timers` 正常。
-- [ ] **部署顺序**：凡改动记录字段白名单（`miniprogram/utils/record-validation.js`，server 侧经 `server/validation.js` re-export）的小程序版本，必须先部署 server、再上传对应小程序版本；顺序颠倒会造成旧服务端 422、写入进「待同步-被拒」（2026-09-24 aiConsent 事故）。
+- [ ] **部署顺序**：凡改动记录字段白名单（`miniprogram/utils/record-validation.js`，server 侧经 `server/validation.js` re-export）的小程序版本，必须先部署 server、再上传对应小程序版本；顺序颠倒会造成旧服务端 422、写入进「待同步-被拒」（2026-09-24 aiConsent 事故）。**v2.11 再次触碰白名单**（settings 新增 `theme:'auto'`、`habitReminderEnabled`、`billReminderEnabled`、`habitReminderTime`）：旧服务端收到这些字段会 422 并把主题保存打进 rejectedWrites，必须先部署 v2.11 server 再上传 v2.11 小程序。兼容性边界（如实宣传）：新服务端 + 旧小程序可正常运行；旧服务端 + 新小程序会出现上述 422，不可接受。
+- [ ] **v2.11 数据库迁移**：新增 `reminder_credits` 表（`server/db/schema.sql`）。生产环境必须由迁移账号先执行 `npm run db:migrate` 再启动新版 server——`DB_RUN_MIGRATIONS=0` 时启动脚本会因缺表直接失败（verifySchema 已把该表列入必需表），这是有意的部署闸门而非故障。
+- [ ] **v2.11 提醒模板配置**：在微信后台另行申请「习惯打卡提醒」「还款提醒」两个订阅消息模板（字段结构对齐现有 thing1/time2），填入 `.env` 的 `WX_HABIT_REMINDER_TEMPLATE_ID` / `WX_BILL_REMINDER_TEMPLATE_ID`；`HABIT_REMINDER_HOUR` 可选（默认 20）。两个键留空时对应提醒静默停用（capabilities 返回 enabled:false），互不影响；未申请模板前上传小程序版，开关开启会提示「服务端未开启」。
+- [ ] **v2.11 服务端时区**：习惯提醒时间（`habitReminderTime` / `HABIT_REMINDER_HOUR`）与还款「到期前 2 天」窗口都按**服务器本地日历**计算。`deploy/life-sync.service` 已内置 `Environment=TZ=Asia/Shanghai`；云主机默认 UTC 时若删掉该行，20:00 的提醒会落到北京时间凌晨 4 点。部署后用 `date` 或 `timedatectl` 核对 server 进程的实际时区。
 - [ ] **打包与共享工具**：服务端部署物必须用 `RELEASE_VERSION=<版本> node server/scripts/pack-release.js` 现打（含 `server/**` 与共享的 `miniprogram/utils/**` 及 manifest）；仓库根目录的 `life-sync-*.tar.gz` 是历史归档，**不得充当新版包**。上传前核对 `.manifest.json` 的文件数与 `miniprogram/utils/record-validation.js` 的 sha256。
 - [ ] **启动前模块加载检查**：新版共享工具先就位（解包 + `npm ci --omit=dev`），再在解包目录执行 `node server/scripts/check-runtime-modules.js <解包>/server`（全部模块 require 通过），**然后**启动新版 server，**最后**上传小程序版本。任何 `Cannot find module` 都必须先修复再启动。
 
@@ -61,8 +64,12 @@
 - [ ] 点击反馈验收：全部可点元素（`view` / `button`）都带 `hover-class` 且显式声明 `hover-start-time` / `hover-stay-time`；`text` 组件不支持 `hover-class`，文件里剩余的 6 处可点 `text` 是白名单（落在 `> text:nth-child` 类型选择器或行内文本流里，换标签会改坏布局）。按压过渡一律 ≤ 100ms，不得退回微信默认的 `hover-stay-time: 400ms`（见 `tests/tap-feedback.test.js`）。真机上逐页确认点下去立刻有可见反馈。
 - [ ] 编译噪音验收：开发者工具「详情 → 本地设置」的**「启用数据预拉取」必须保持关闭**（`project.private.config.json` 的 `preloadBackgroundData: false`）。开着但项目没有 `preloadRule` / 预拉取下载地址时，每次编译都会弹 `系统错误，错误码：6000100,unbind download url` 模态框，**模态框会盖住模拟器、直接吞掉点击**。本项目全仓没有任何预拉取 API 调用，必须保持关闭；不得在 `app.json` 里引入 `preloadRule`。
 - [ ] 点击跟手性验收（真机）：Tab 切换、列表卡片、筛选 chip、弹层按钮各点 3 次，确认按压态随手指出现与消失、松手后不残留。模拟器实测 `switchTab` 从发起到 complete 约 222ms（其中业务代码只占约 16ms，其余是框架与模拟器开销），**模拟器手感不能作为验收依据，必须在真机上确认**。
-- [ ] 设置信息架构验收：在「我的」页滚到底，确认「数据与隐私」一级只有 **3 行**（个性化 AI 文案开关 / 隐私与合规 / 数据管理），且「永久删除账户与数据」「退出当前账号」位于**独立的「账号」卡**内、不与普通设置同卡——不可逆操作必须隔离，这是隐私类应用的安全不变量（见 `tests/mine-settings.test.js`）。点「隐私与合规」应进入 `pages/legal/legal` 并能切换隐私政策 / 服务协议 / 第三方说明三个 tab；点「数据管理」应弹出底部弹层且悬浮导航同时隐藏，四个动作（导出云端备份 / 复制本机备份 / 重建本机缓存 / 清理示例内容）执行后弹层必须自动收起。
+- [ ] 设置信息架构验收：在「我的」页滚到底，确认「数据与隐私」一级只有 **4 行**（个性化 AI 文案开关 / 隐私与合规 / 数据管理 / 提醒设置，v2.11 起新增第 4 行），且「永久删除账户与数据」「退出当前账号」位于**独立的「账号」卡**内、不与普通设置同卡——不可逆操作必须隔离，这是隐私类应用的安全不变量（见 `tests/mine-settings.test.js`）。点「隐私与合规」应进入 `pages/legal/legal` 并能切换隐私政策 / 服务协议 / 第三方说明三个 tab；点「数据管理」应弹出底部弹层且悬浮导航同时隐藏，四个动作（导出云端备份 / 复制本机备份 / 重建本机缓存 / 清理示例内容）执行后弹层必须自动收起；点「提醒设置」应弹出额度与续订弹层（不新增页面路由）。
 - [ ] 新建未来一次性定时日程，验证订阅同意、到点跳转；拒绝订阅时日程仍保存。
+- [ ] v2.11 深色模式验收：iOS/Android 系统深浅切换时已打开的页面实时跟随（选「跟随系统」后）；auto 下系统导航栏与底栏在 JS 执行前就有正确底色（冷启动观察）；切回具体主题后不再跟随系统；旧版体验版打开新版设置记录时回退雾林且不报错。
+- [ ] v2.11 提醒矩阵验收：习惯页开启「打卡提醒」→ 弹订阅授权 → 同意后行副文案显示剩余次数；当天保持零打卡，到提醒时间收到订阅消息且落地页为习惯页；当日打卡后不再收到；同日绝不重发。负债账户填 `dueDay`/`currentBill` 并开启「还款提醒」，到期前 2 天（含当天）收到提醒且落地页为记账页。额度用完后页内出现续订横幅、`「我的 → 提醒设置」`可续订；拒绝订阅时开关仍生效但额度为 0（不发），不反复弹订阅。
+- [ ] v2.11 分批渲染验收：写入 15 天以上流水后打开记账页，列表只显示 10 个日期分组与「加载更早的流水」，点一次累加 10 组；月支出汇总与分类 chips 是全月口径；切分类/切月/切月历再切回时回到首批；月历视图完整显示全月。书影音写入 45 条以上时首批 40 条、追加与筛选重置同理，年度统计为全量口径。
+- [ ] v2.11 最近记录验收：今日页最近记录行可点，按类型直达对应页面；点记账行进入记账页并直接弹出该笔流水编辑弹层；习惯/日程/书影音/体重行均可跳转且带按压反馈。
 - [ ] 断网新增记录后恢复网络，确认队列只同步一次；再验证历史月报、随记搜索和时间线。
 - [ ] 若登录重试仍失败，按时间核对小程序错误类别/耗时/服务端失败阶段、Nginx 访问日志和服务端 `event=login` 记录。有 HTTP 记录时按状态码定位；没有 HTTP 记录时结合 TCP 抓包定位连接重置发生端。不得从日志记录或截图中收集 code、令牌、手机号或密钥。
 - [ ] 开启 AI 后验证提示文案；关闭后确认不再请求 AI、缓存文案被清除且本机规则文案仍正常显示。
