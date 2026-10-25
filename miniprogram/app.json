@@ -16,11 +16,11 @@
     "pages/search/search"
   ],
   "window": {
-    "navigationBarBackgroundColor": "#F3F5F2",
-    "navigationBarTextStyle": "black",
+    "navigationBarBackgroundColor": "@navBgColor",
+    "navigationBarTextStyle": "@navTxtStyle",
     "navigationBarTitleText": "生活记忆 life",
-    "backgroundColor": "#F3F5F2",
-    "backgroundTextStyle": "light"
+    "backgroundColor": "@bgColor",
+    "backgroundTextStyle": "@bgTxtStyle"
   },
   "tabBar": {
     "custom": true,
@@ -37,5 +37,7 @@
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json",
-  "lazyCodeLoading": "requiredComponents"
+  "lazyCodeLoading": "requiredComponents",
+  "darkmode": true,
+  "themeLocation": "theme.json"
 }

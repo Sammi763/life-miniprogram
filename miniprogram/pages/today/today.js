@@ -6,11 +6,13 @@ const { addDays, derivePlanOccurrences, makeOccurrenceId } = require('../../util
 const { buildTodayQueue, chooseFocusTask } = require('../../utils/daily-utils');
 const habitUtils = require('../../utils/habit-utils');
 const { buildBillAlerts, buildBudgetAdvice } = require('../../utils/ledger-utils');
+const { setPendingOpen } = require('../../utils/pending-open');
 const { syncTabBar, attachOverlayWatcher, TAB } = require('../../utils/tabbar');
 const theme = require('../../utils/theme');
 const share = require('../../utils/share');
 
 const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+const MEDIA_STATUS_LABELS = { wishlist: '想看', doing: '在看', done: '看完' };
 
 function hasAiConsent() {
   const setting = store.state.records.settings && store.state.records.settings.app;
@@ -201,6 +203,67 @@ Page({
       if (r.deletedAt || !r.data) continue;
       recentRecords.push({ id: r.id, kind: 'memory', title: String(r.data.content || '').slice(0, 30), sub: String(r.data.occurredAt || '').replace('T', ' · '), amount: '', amountClass: '', updatedAt: r.updatedAt || 0 });
     }
+    /* 四类新来源：习惯打卡（含补录）、日程、书影音、体重。sub 带类型标签，与「财务」「待买」口径一致 */
+    const habitNames = {};
+    for (const r of Object.values(s.records.habit)) {
+      if (r.deletedAt || !r.data) continue;
+      if (r.data.kind === 'def') habitNames[r.id] = r.data.name || '习惯';
+    }
+    /* 系列标题表：occurrence 行的展示与跳转都要用（跳到系列编辑，而非单日覆盖记录） */
+    const seriesTitles = {};
+    for (const r of Object.values(s.records.plan)) {
+      if (r.deletedAt || !r.data || r.data.kind !== 'series' || !r.data.title) continue;
+      seriesTitles[r.id] = String(r.data.title);
+    }
+    for (const r of Object.values(s.records.habit)) {
+      if (r.deletedAt || !r.data || r.data.kind !== 'entry') continue;
+      const name = habitNames[r.data.habitId] || '习惯';
+      recentRecords.push({
+        id: r.id, kind: 'habit',
+        title: name + ' ' + (Number(r.data.value) || 0),
+        sub: (r.data.date === t ? '今天' : r.data.date) + ' · 习惯',
+        amount: '', amountClass: '', updatedAt: r.updatedAt || 0
+      });
+    }
+    for (const r of Object.values(s.records.plan)) {
+      if (r.deletedAt || !r.data) continue;
+      /* 重复日程的单日覆盖记录（occurrence）自身不写 title：借系列标题展示，跳转目标给系列 id
+         （occurrence 不可直接编辑，plan.js openEditById 有对应守卫） */
+      if (r.data.kind === 'occurrence') {
+        const seriesTitle = r.data.titleSnapshot || seriesTitles[r.data.seriesId];
+        if (!seriesTitle) continue;
+        recentRecords.push({
+          id: r.id, kind: 'plan', navId: r.data.seriesId, title: String(seriesTitle),
+          sub: (r.data.date === t ? '今天' : r.data.date) + ' · ' + (r.data.done ? '日程已完成' : '日程'),
+          amount: '', amountClass: '', updatedAt: r.updatedAt || 0
+        });
+        continue;
+      }
+      const title = r.data.title;
+      if (!title) continue;
+      recentRecords.push({
+        id: r.id, kind: 'plan', navId: r.id, title: String(title),
+        sub: (r.data.date === t ? '今天' : r.data.date) + ' · ' + (r.data.done ? '日程已完成' : '日程'),
+        amount: '', amountClass: '', updatedAt: r.updatedAt || 0
+      });
+    }
+    for (const r of Object.values(s.records.media || {})) {
+      if (r.deletedAt || !r.data || !r.data.title) continue;
+      const statusText = MEDIA_STATUS_LABELS[r.data.status] || '想看';
+      recentRecords.push({
+        id: r.id, kind: 'media', title: r.data.title + ' · ' + statusText,
+        sub: (r.data.date === t ? '今天' : r.data.date) + ' · 书影音',
+        amount: '', amountClass: '', updatedAt: r.updatedAt || 0
+      });
+    }
+    for (const r of Object.values(s.records.fitness || {})) {
+      if (r.deletedAt || !r.data || r.data.kind !== 'weight') continue;
+      recentRecords.push({
+        id: r.id, kind: 'fitness', title: (Number(r.data.weight) || 0) + ' kg',
+        sub: (r.data.date === t ? '今天' : r.data.date) + ' · 体重',
+        amount: '', amountClass: '', updatedAt: r.updatedAt || 0
+      });
+    }
     recentRecords.sort((a, b) => b.updatedAt - a.updatedAt);
 
     this.setData({
@@ -308,5 +371,25 @@ Page({
   goShopping() { wx.navigateTo({ url: '/pages/shopping/shopping' }); },
   goFitness() { wx.navigateTo({ url: '/pages/fitness/fitness' }); },
   goReport() { wx.navigateTo({ url: '/pages/report/report' }); },
-  goSearch() { wx.navigateTo({ url: '/pages/search/search' }); }
+  goSearch() { wx.navigateTo({ url: '/pages/search/search' }); },
+
+  /* 最近记录行跳转分发：money 走 storage 中转（与搜索页同一套 pending-open），其余直达对应页；
+     plan 行优先用 navId（occurrence 行指向系列编辑），其余 kind 的 navId 等同 id */
+  onRecentTap(e) {
+    const dataset = e.currentTarget.dataset || {};
+    const { id, kind } = dataset;
+    if (!kind) return;
+    const navId = dataset.navId || id;
+    if (ui.isRepeatedTap(this, 'recent-' + kind + '-' + id, 400)) return;
+    if (kind === 'money') {
+      if (id) setPendingOpen('money', id);
+      return wx.switchTab({ url: '/pages/money/money' });
+    }
+    if (kind === 'habit') return wx.switchTab({ url: '/pages/habit/habit' });
+    if (kind === 'memory') return wx.navigateTo({ url: '/pages/memory/memory' + (navId ? '?id=' + encodeURIComponent(navId) : '') });
+    if (kind === 'plan') return wx.navigateTo({ url: '/pages/plan/plan' + (navId ? '?id=' + encodeURIComponent(navId) : '') });
+    if (kind === 'shopping') return wx.navigateTo({ url: '/pages/shopping/shopping' + (navId ? '?id=' + encodeURIComponent(navId) : '') });
+    if (kind === 'media') return wx.navigateTo({ url: '/pages/media/media' + (navId ? '?id=' + encodeURIComponent(navId) : '') });
+    if (kind === 'fitness') return wx.navigateTo({ url: '/pages/fitness/fitness' + (navId ? '?id=' + encodeURIComponent(navId) : '') });
+  }
 });

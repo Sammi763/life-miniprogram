@@ -69,3 +69,11 @@ CREATE TABLE IF NOT EXISTS ai_insights (
   PRIMARY KEY (owner_id, insight_key),
   INDEX idx_ai_insights_updated (updated_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS reminder_credits (
+  owner_id VARCHAR(191) NOT NULL,
+  kind VARCHAR(16) NOT NULL,
+  credits INT UNSIGNED NOT NULL DEFAULT 0,
+  updated_at BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (owner_id, kind)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

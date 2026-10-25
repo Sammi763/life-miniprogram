@@ -7,7 +7,8 @@ const TIME_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const OCCURRED_AT_PATTERN = /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/;
 const MEMORY_MOODS = ['happy', 'calm', 'energized', 'tired', 'low'];
-const SETTINGS_THEMES = ['forest', 'paper', 'sky', 'violet', 'night'];
+/* 'auto' = 跟随系统深浅（v2.11）；旧客户端读到 auto 会按未知主题回退 forest（可接受降级） */
+const SETTINGS_THEMES = ['forest', 'paper', 'sky', 'violet', 'night', 'auto'];
 
 function object(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -183,13 +184,16 @@ function validateRecordData(collection, data) {
       number(data.rating, 0, 5, true) && Number.isInteger(data.rating) && text(data.comment, 500, false) && date(data.date, true) && legacyCover(data.cover, 512) ? '' : 'bad_media';
   }
   if (collection === 'settings') {
-    return ownKeysOnly(data, ['budget', 'height', 'targetWeight', 'categoryBudgets', 'aiConsent', 'theme', 'customCategories', 'favoriteCategories', 'hiddenCategories']) &&
+    return ownKeysOnly(data, ['budget', 'height', 'targetWeight', 'categoryBudgets', 'aiConsent', 'theme', 'customCategories', 'favoriteCategories', 'hiddenCategories', 'habitReminderEnabled', 'billReminderEnabled', 'habitReminderTime']) &&
       number(data.budget, 0, 1000000, false) && number(data.height, 0, 250, false) && number(data.targetWeight, 0, 300, false) &&
       categoryBudgets(data.categoryBudgets) && boolean(data.aiConsent, false) &&
       customCategories(data.customCategories) &&
       (data.favoriteCategories === undefined || data.favoriteCategories === null || (Array.isArray(data.favoriteCategories) && data.favoriteCategories.length <= 12 && categoryEntries(data.favoriteCategories))) &&
       (data.hiddenCategories === undefined || data.hiddenCategories === null || (Array.isArray(data.hiddenCategories) && data.hiddenCategories.length <= 40 && categoryEntries(data.hiddenCategories))) &&
-      (data.theme === undefined || SETTINGS_THEMES.includes(data.theme)) ? '' : 'bad_settings';
+      (data.theme === undefined || SETTINGS_THEMES.includes(data.theme)) &&
+      boolean(data.habitReminderEnabled, false) && boolean(data.billReminderEnabled, false) &&
+      // habitReminderTime：'HH:MM' 24 小时制；缺省由服务端按默认时间处理
+      (data.habitReminderTime === undefined || data.habitReminderTime === null || data.habitReminderTime === '' || (typeof data.habitReminderTime === 'string' && TIME_PATTERN.test(data.habitReminderTime))) ? '' : 'bad_settings';
   }
   if (collection === 'memories') {
     return ownKeysOnly(data, ['content', 'occurredAt', 'mood', 'tags']) && text(data.content, 1000, true) &&

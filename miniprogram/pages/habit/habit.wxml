@@ -40,6 +40,13 @@
 
 <view wx:if="{{habits.length === 0}}" class="card"><view class="empty">还没有习惯，点右下角添加一个吧</view></view>
 
+<view class="card reminder-card">
+  <view class="card-title"><text>打卡提醒</text><text class="sub">{{habitReminder.capEnabled ? '每天 ' + habitReminder.time + ' 推送订阅消息' : '到点提醒你补上打卡'}}</text></view>
+  <view class="switch-row"><view><view>每天提醒打卡</view><view class="sub">{{habitReminder.enabled && habitReminder.capEnabled && habitReminder.credits > 0 ? '剩余提醒次数 ' + habitReminder.credits : (habitReminder.enabled && habitReminder.capEnabled ? '提醒额度已用完，可点下方横幅续订' : '开启时需同意订阅消息，一次订阅提醒一次')}}</view></view><switch checked="{{habitReminder.enabled}}" color="{{themeAccent}}" bindchange="onHabitReminderToggle" /></view>
+  <view class="switch-row"><view><view>提醒时间</view><view class="sub">服务端到点推送，可随时调整</view></view><picker mode="time" value="{{habitReminder.time}}" bindchange="onHabitReminderTime"><view class="picker-value tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{habitReminder.time}}</view></picker></view>
+  <view wx:if="{{habitReminder.banner}}" class="reminder-banner tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="onReminderRenew">{{habitReminder.banner}}</view>
+</view>
+
 <view class="fab" hover-class="fab-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openAdd">＋</view>
 
 <view wx:if="{{sheetShow}}" class="mask" bindtap="closeSheet"></view>

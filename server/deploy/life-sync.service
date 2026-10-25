@@ -16,6 +16,8 @@ TimeoutStartSec=30
 TimeoutStopSec=20
 User=www-data
 Environment=NODE_ENV=production
+# 提醒矩阵（v2.11）的提醒时间与还款窗口按服务器本地日历计算；云主机默认 UTC 时必须保留这一行
+Environment=TZ=Asia/Shanghai
 EnvironmentFile=/opt/life-sync-server/.env
 NoNewPrivileges=true
 PrivateTmp=true

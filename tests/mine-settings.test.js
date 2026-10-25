@@ -36,14 +36,19 @@ const accountBlock = sliceBetween(mineWxml, 'class="card account-card"', 'class=
 const sheetBlock = mineWxml.slice(mineWxml.indexOf('class="mask"'));
 assert.ok(sheetBlock.length > 0, '应能定位到数据管理弹层');
 
-/* ---------- 1. 一级只允许三行，且这三行分别是开关 / 合规入口 / 数据管理入口 ---------- */
+/* ---------- 1. 一级行数收口：v2.10 三行 + v2.11 提醒设置（弹层入口，不新增页面） ---------- */
 
 const settingsRowCount = (settingsBlock.match(/class="setting-row/g) || []).length;
-assert.strictEqual(settingsRowCount, 3, '「数据与隐私」一级只应有 3 行，实际 ' + settingsRowCount + ' 行');
+assert.strictEqual(settingsRowCount, 4, '「数据与隐私」一级只应有 4 行（AI / 合规 / 数据管理 / 提醒设置），实际 ' + settingsRowCount + ' 行');
 
 assert.ok(/<switch[^>]*bindchange="onAiConsentChange"/.test(settingsBlock), '「个性化 AI 文案」开关必须留在一级（它是唯一决定数据是否离开本机的开关）');
 assert.ok(/class="setting-row[^"]*"[^>]*bindtap="goLegal"/.test(settingsBlock), '合规入口必须留在一级');
 assert.ok(/class="setting-row[^"]*"[^>]*bindtap="openDataSheet"/.test(settingsBlock), '数据管理入口必须留在一级');
+/* v2.11 提醒矩阵：入口是本页弹层（reminderSheetShow），不得新增页面路由 */
+assert.ok(/class="setting-row[^"]*"[^>]*bindtap="openReminderSheet"/.test(settingsBlock), '提醒设置入口必须留在一级');
+assert.ok(/bindtap="onReminderRenew" data-kind="habit"/.test(mineWxml), '提醒弹层必须提供习惯提醒续订按钮');
+assert.ok(/bindtap="onReminderRenew" data-kind="bill"/.test(mineWxml), '提醒弹层必须提供账单提醒续订按钮');
+assert.ok(!/navigateTo[^>]*reminder/.test(mineWxml), '提醒设置必须是弹层而不是新页面');
 
 /* 合规三份文档合并成一行：复用 pages/legal/legal 自带的三个 tab，不新增页面。
    因此 mine 页一级不应再出现另外两份法律文档的入口。 */
@@ -89,4 +94,4 @@ assert.ok(/closeDataSheet\(\)\s*\{\s*if\s*\(this\.data\.dataSheetShow\)/.test(mi
 
 assert.ok(/attachOverlayWatcher\(this\)/.test(mineJs), 'mine 是 Tab 页，加弹层后必须在 onLoad 接入 attachOverlayWatcher');
 
-console.log('mine-settings.test.js  OK（一级三行 / 合规三份合并 / 删除与退出独立成卡 / 四项运维进弹层且执行后收起）');
+console.log('mine-settings.test.js  OK（一级四行含 v2.11 提醒设置弹层 / 合规三份合并 / 删除与退出独立成卡 / 运维进弹层且执行后收起）');

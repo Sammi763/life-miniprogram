@@ -2,14 +2,17 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { hashSessionToken } = require('../session-token');
+const { scanBillReminders: scanBillRemindersShared, scanHabitReminders: scanHabitRemindersShared } = require('./reminder-scan');
 
 const COLLECTIONS = ['money', 'habit', 'plan', 'fitness', 'shopping', 'media', 'accounts', 'settings', 'memories'];
+/* v2.11 提醒矩阵：订阅额度按 kind 记账（扫描语义见 ./reminder-scan.js） */
+const REMINDER_CREDIT_KINDS = ['habit', 'bill'];
 
 class FileStore {
   constructor(config) {
     this.config = config || {};
     this.file = path.join(config.dataDir, 'db.json');
-    this.db = { records: {}, sessions: {}, users: {}, reminders: {}, secrets: {}, insights: {} };
+    this.db = { records: {}, sessions: {}, users: {}, reminders: {}, secrets: {}, insights: {}, credits: {} };
     for (const collection of COLLECTIONS) this.db.records[collection] = {};
     this.saveTimer = null;
   }
@@ -28,6 +31,7 @@ class FileStore {
     if (!this.db.reminders) this.db.reminders = {};
     if (!this.db.secrets) this.db.secrets = {};
     if (!this.db.insights) this.db.insights = {};
+    if (!this.db.credits) this.db.credits = {};
     for (const collection of COLLECTIONS) if (!this.db.records[collection]) this.db.records[collection] = {};
     let changed = false;
     Object.keys(this.db.users).forEach((ownerId) => {
@@ -314,7 +318,10 @@ class FileStore {
       if (this.db.reminders[id].ownerId === ownerId) delete this.db.reminders[id];
     });
     Object.keys(this.db.insights).forEach((key) => {
-      if (this.db.insights[key].ownerId === ownerId) delete this.db.insights[key];
+      if (this.db.insights[key] && this.db.insights[key].ownerId === ownerId) delete this.db.insights[key];
+    });
+    Object.keys(this.db.credits).forEach((key) => {
+      if (String(key).split('|')[0] === ownerId) delete this.db.credits[key];
     });
     if (this.db.uploads) {
       Object.keys(this.db.uploads).forEach((key) => {
@@ -324,9 +331,75 @@ class FileStore {
     this.scheduleSave();
   }
 
+  /* ---------- v2.11 提醒矩阵：额度 + 扫描生成（与 mysql-store 同语义） ---------- */
+
+  creditKey(ownerId, kind) { return ownerId + '|' + kind; }
+
+  async getReminderCredits(ownerId) {
+    const read = (kind) => Math.max(0, Number(this.db.credits[this.creditKey(ownerId, kind)]) || 0);
+    return { habit: read('habit'), bill: read('bill') };
+  }
+
+  async addReminderCredit(ownerId, kind, delta) {
+    if (!REMINDER_CREDIT_KINDS.includes(kind)) throw new Error('bad_reminder_kind');
+    const key = this.creditKey(ownerId, kind);
+    const next = Math.max(0, Math.floor((Number(this.db.credits[key]) || 0) + (Number(delta) || 0)));
+    this.db.credits[key] = next;
+    this.scheduleSave();
+    return next;
+  }
+
+  settingOwnerIds() {
+    const owners = new Set();
+    Object.values(this.db.records.settings).forEach((record) => {
+      if (record && !record.deletedAt && record.data && record.ownerId) owners.add(record.ownerId);
+    });
+    return owners;
+  }
+
+  settingDataFor(ownerId) {
+    const record = Object.values(this.db.records.settings).find((item) => item && (item.ownerId || 'dev-user') === ownerId && item.id === 'app');
+    return record && !record.deletedAt && record.data ? record.data : null;
+  }
+
+  /* 扫描数据原语（与 mysql-store 同语义）：设置清单 / 当日有打卡的用户 / 负债账户 / 提醒是否已存在 */
+  async listReminderSettings() {
+    return Array.from(this.settingOwnerIds()).map((ownerId) => ({ ownerId, data: this.settingDataFor(ownerId) }));
+  }
+
+  async listHabitEntryOwners(today) {
+    const owners = new Set();
+    Object.values(this.db.records.habit).forEach((record) => {
+      if (record && !record.deletedAt && record.data && record.data.kind === 'entry' && record.data.date === today) {
+        owners.add(record.ownerId || 'dev-user');
+      }
+    });
+    return owners;
+  }
+
+  async listLiabilityAccounts() {
+    return Object.values(this.db.records.accounts)
+      .filter((record) => record && !record.deletedAt && record.data)
+      .map((record) => ({ ownerId: record.ownerId || 'dev-user', id: record.id, data: record.data }));
+  }
+
+  async reminderExistsFor(ownerId, planId) {
+    return Boolean(await this.getLatestReminderForPlan(ownerId, planId));
+  }
+
+  async scanHabitReminders(today, now) {
+    return scanHabitRemindersShared(this, today, now);
+  }
+
+  async scanBillReminders(today, now) {
+    return scanBillRemindersShared(this, today, now);
+  }
+
   async close() {
     clearTimeout(this.saveTimer);
   }
 }
+
+function pad2(value) { return String(value).padStart(2, '0'); }
 
 module.exports = { FileStore, COLLECTIONS };

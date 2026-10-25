@@ -43,6 +43,11 @@ function loadConfig() {
     wxSecret: env.WX_SECRET || '',
     wxReminderTemplateId: env.WX_REMINDER_TEMPLATE_ID || '',
     wxReminderPage: env.WX_REMINDER_PAGE || 'pages/plan/plan',
+    // v2.11 提醒矩阵：习惯打卡提醒与账单还款提醒各自独立模板；未配置的 kind 静默停用
+    wxHabitReminderTemplateId: env.WX_HABIT_REMINDER_TEMPLATE_ID || '',
+    wxBillReminderTemplateId: env.WX_BILL_REMINDER_TEMPLATE_ID || '',
+    // 习惯提醒的兜底发送小时（用户在设置里未填 habitReminderTime 时使用），默认 20:00
+    habitReminderHour: numberFrom(env.HABIT_REMINDER_HOUR, 20),
     reminderWorkerIntervalMs: numberFrom(env.REMINDER_WORKER_INTERVAL_MS, 60000),
     reminderRetentionDays: numberFrom(env.REMINDER_RETENTION_DAYS, 90),
     wxHttpTimeoutMs: numberFrom(env.WX_HTTP_TIMEOUT_MS, 10000),

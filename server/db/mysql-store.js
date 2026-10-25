@@ -3,9 +3,12 @@ const path = require('path');
 const crypto = require('crypto');
 const mysql = require('mysql2/promise');
 const { hashSessionToken, isTokenHash } = require('../session-token');
+const { scanBillReminders: scanBillRemindersShared, scanHabitReminders: scanHabitRemindersShared } = require('./reminder-scan');
 
 const COLLECTIONS = ['money', 'habit', 'plan', 'fitness', 'shopping', 'media', 'accounts', 'settings', 'memories'];
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9_]+$/;
+const REMINDER_CREDIT_KINDS = ['habit', 'bill'];
+const REQUIRED_TABLES = ['records', 'sessions', 'users', 'scheduled_reminders', 'app_secrets', 'ai_insights', 'reminder_credits'];
 
 function assertDatabaseName(name) {
   if (!IDENTIFIER_PATTERN.test(name)) throw new Error('Invalid DB_NAME');
@@ -96,12 +99,11 @@ class MySqlStore {
 
   async verifySchema() {
     const [rows] = await this.pool.execute(
-      "SELECT table_name AS tableName FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('records', 'sessions', 'users', 'scheduled_reminders', 'app_secrets', 'ai_insights')"
+      "SELECT table_name AS tableName FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('records', 'sessions', 'users', 'scheduled_reminders', 'app_secrets', 'ai_insights', 'reminder_credits')"
     );
     const names = new Set(rows.map((row) => row.tableName));
-    const required = ['records', 'sessions', 'users', 'scheduled_reminders', 'app_secrets', 'ai_insights'];
-    const missing = required.filter((name) => !names.has(name));
-    if (missing.length) throw new Error('Database schema missing: ' + missing.join(', '));
+    const missing = REQUIRED_TABLES.filter((name) => !names.has(name));
+    if (missing.length) throw new Error('Database schema missing: ' + missing.join(', ') + '（先执行 db:migrate 再启动）');
     const [tokenColumns] = await this.pool.execute(
       "SELECT character_maximum_length AS length FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sessions' AND column_name = 'token' LIMIT 1"
     );
@@ -440,6 +442,78 @@ class MySqlStore {
     return result.affectedRows > 0;
   }
 
+  /* ---------- v2.11 提醒矩阵：额度 + 扫描数据原语（扫描语义与 file 驱动共用 ./reminder-scan.js） ---------- */
+
+  parseRecordData(value) {
+    if (typeof value === 'string') {
+      try { return JSON.parse(value); } catch (error) { return {}; }
+    }
+    return value || {};
+  }
+
+  async getReminderCredits(ownerId) {
+    const [rows] = await this.pool.execute(
+      'SELECT kind, credits FROM reminder_credits WHERE owner_id = ?',
+      [ownerId]
+    );
+    const result = { habit: 0, bill: 0 };
+    for (const row of rows) {
+      if (row.kind in result) result[row.kind] = Math.max(0, Number(row.credits) || 0);
+    }
+    return result;
+  }
+
+  async addReminderCredit(ownerId, kind, delta) {
+    if (!REMINDER_CREDIT_KINDS.includes(kind)) throw new Error('bad_reminder_kind');
+    const step = Math.trunc(Number(delta) || 0);
+    const now = Date.now();
+    await this.pool.execute(
+      `INSERT INTO reminder_credits (owner_id, kind, credits, updated_at)
+       VALUES (?, ?, GREATEST(0, ?), ?)
+       ON DUPLICATE KEY UPDATE credits = GREATEST(0, credits + ?), updated_at = VALUES(updated_at)`,
+      [ownerId, kind, step, now, step]
+    );
+    const credits = await this.getReminderCredits(ownerId);
+    return credits[kind];
+  }
+
+  async listReminderSettings() {
+    const [rows] = await this.pool.execute(
+      `SELECT owner_id AS ownerId, data FROM records WHERE collection = 'settings' AND record_id = 'app' AND deleted_at = 0`
+    );
+    return rows.map((row) => ({ ownerId: row.ownerId, data: this.parseRecordData(row.data) }));
+  }
+
+  async listHabitEntryOwners(today) {
+    const [rows] = await this.pool.execute(
+      `SELECT DISTINCT owner_id AS ownerId FROM records
+       WHERE collection = 'habit' AND deleted_at = 0
+         AND JSON_UNQUOTE(JSON_EXTRACT(data, '$.kind')) = 'entry'
+         AND JSON_UNQUOTE(JSON_EXTRACT(data, '$.date')) = ?`,
+      [String(today)]
+    );
+    return new Set(rows.map((row) => row.ownerId));
+  }
+
+  async listLiabilityAccounts() {
+    const [rows] = await this.pool.execute(
+      `SELECT owner_id AS ownerId, record_id AS id, data FROM records WHERE collection = 'accounts' AND deleted_at = 0`
+    );
+    return rows.map((row) => ({ ownerId: row.ownerId, id: row.id, data: this.parseRecordData(row.data) }));
+  }
+
+  async reminderExistsFor(ownerId, planId) {
+    return Boolean(await this.getLatestReminderForPlan(ownerId, planId));
+  }
+
+  async scanHabitReminders(today, now) {
+    return scanHabitRemindersShared(this, today, now);
+  }
+
+  async scanBillReminders(today, now) {
+    return scanBillRemindersShared(this, today, now);
+  }
+
   async deleteAccount(ownerId) {
     const connection = await this.pool.getConnection();
     try {
@@ -448,6 +522,7 @@ class MySqlStore {
       await connection.execute('DELETE FROM sessions WHERE openid = ?', [ownerId]);
       await connection.execute('DELETE FROM scheduled_reminders WHERE owner_id = ?', [ownerId]);
       await connection.execute('DELETE FROM ai_insights WHERE owner_id = ?', [ownerId]);
+      await connection.execute('DELETE FROM reminder_credits WHERE owner_id = ?', [ownerId]);
       await connection.execute('DELETE FROM users WHERE owner_id = ?', [ownerId]);
       if (this.legacyUploadsAvailable) await connection.execute('DELETE FROM uploads WHERE owner_id = ?', [ownerId]);
       await connection.commit();

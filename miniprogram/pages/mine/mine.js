@@ -8,6 +8,7 @@ const { pickSettings } = require('../../utils/settings-utils');
 const backup = require('../../utils/backup');
 const { buildMoneyCsv } = require('../../utils/money-csv');
 const theme = require('../../utils/theme');
+const reminderClient = require('../../utils/reminder-client');
 const share = require('../../utils/share');
 
 const MODULES = [
@@ -75,6 +76,7 @@ Page({
     budgetInput: '',
     categoryBudgetInputs: [],
     themeId: 'forest',
+    themeSetting: 'forest',
     themeOptions: [],
     deletingAccount: false,
     aiConsent: false,
@@ -86,6 +88,11 @@ Page({
     showDemoControls: true,
     // 低频运维项（导出 / 复制备份 / 导入恢复 / 重建缓存 / 清理示例）收进弹层，见 openDataSheet
     dataSheetShow: false,
+    /* 提醒设置弹层（v2.11）：订阅额度展示与续订入口；开关本体在习惯页/记账页 */
+    reminderSheetShow: false,
+    reminderCaps: null,
+    reminderHabitText: '',
+    reminderBillText: '',
     /* 导入备份恢复：粘贴 → 解析预览 → 确认应用（utils/backup.js） */
     importSheetShow: false,
     importText: '',
@@ -131,7 +138,9 @@ Page({
   render() {
     const s = store.state;
     const settings = s.records.settings.app && s.records.settings.app.data || {};
+    /* theme 可能是 'auto'（跟随系统）：token 用解析后的具体主题，选中态用原始设置值 */
     const themeId = theme.getThemeId(settings.theme);
+    const themeChoice = settings.theme === theme.AUTO_THEME_ID ? theme.AUTO_THEME_ID : themeId;
     theme.applyToPage(this, themeId);
     const categoryBudgets = settings.categoryBudgets && typeof settings.categoryBudgets === 'object' ? settings.categoryBudgets : {};
     let n = 0;
@@ -160,7 +169,8 @@ Page({
       })(),
       aiConsent: settings.aiConsent === true,
       themeId,
-      themeOptions: theme.getThemeOptions(themeId),
+      themeSetting: themeChoice,
+      themeOptions: theme.getThemeOptions(themeChoice),
       showDemoControls: !api.getRuntimeConfig().isProduction,
       // 本机缓存占用直接取上次落盘的实测体积，避免每次渲染都重新序列化全量数据
       cacheText: s.persistSize ? (Math.max(1, Math.round(s.persistSize / 1024)) + ' KB') : '—',
@@ -185,13 +195,49 @@ Page({
   },
 
   onThemeSelect(event) {
-    const themeId = theme.normalizeThemeId(event.currentTarget.dataset.theme);
-    if (themeId === this.data.themeId) return;
+    const choice = theme.normalizeThemeChoice(event.currentTarget.dataset.theme);
+    if (choice === this.data.themeSetting) return;
     const settings = pickSettings(store.state.records.settings.app && store.state.records.settings.app.data);
-    sync.upsert('settings', { ...settings, theme: themeId }, 'app');
-    theme.selectTheme(themeId);
-    this.setData({ themeId, themeOptions: theme.getThemeOptions(themeId) });
+    sync.upsert('settings', { ...settings, theme: choice }, 'app');
+    theme.selectTheme(choice);
     /* 不再弹 toast：选中态已有 ✓ 角标，双重反馈是噪音 */
+  },
+
+  /* ---- 提醒设置弹层（v2.11）：额度展示 + 续订；开关本体在习惯页/记账页 ---- */
+  openReminderSheet() {
+    this.setData({ reminderSheetShow: true, reminderHabitText: '查询中…', reminderBillText: '查询中…' });
+    reminderClient.fetchCaps().then((caps) => {
+      this.reminderCaps = caps;
+      if (!caps) {
+        this.setData({ reminderHabitText: '暂不可用，请稍后再试', reminderBillText: '暂不可用，请稍后再试' });
+        return;
+      }
+      this.setData({ reminderHabitText: this.reminderKindText('habit', caps), reminderBillText: this.reminderKindText('bill', caps) });
+    });
+  },
+  closeReminderSheet() { if (this.data.reminderSheetShow) this.setData({ reminderSheetShow: false }); },
+  reminderKindText(kind, caps) {
+    const cap = caps && caps[kind];
+    if (!cap || !cap.enabled) return '服务端未开启';
+    const credits = Math.max(0, Number(cap.credits) || 0);
+    return credits > 0 ? '剩余提醒次数 ' + credits : '额度已用完，点右侧续订';
+  },
+  async onReminderRenew(event) {
+    const kind = event.currentTarget.dataset.kind === 'bill' ? 'bill' : 'habit';
+    if (ui.isRepeatedTap(this, 'renew-' + kind, 800)) return;
+    if (!this.reminderCaps) this.reminderCaps = await reminderClient.fetchCaps();
+    const result = await reminderClient.subscribeAndCredit(kind, this.reminderCaps || {});
+    if (result.ok) wx.showToast({ title: '已续订', icon: 'success' });
+    else if (result.reason === 'unavailable') wx.showToast({ title: '服务端未开启该提醒', icon: 'none' });
+    else if (result.reason === 'rejected') wx.showToast({ title: '未同意订阅', icon: 'none' });
+    else wx.showToast({ title: '续订失败，请稍后重试', icon: 'none' });
+    /* 上报成功的额度直接回写本页缓存，文案立即反映新值，不等下次 onShow */
+    if (result.ok && this.reminderCaps && this.reminderCaps[kind]) {
+      this.reminderCaps[kind].credits = Math.max(this.reminderCaps[kind].credits, Number(result.credits) || 0);
+    }
+    if (this.reminderCaps) {
+      this.setData({ reminderHabitText: this.reminderKindText('habit', this.reminderCaps), reminderBillText: this.reminderKindText('bill', this.reminderCaps) });
+    }
   },
 
   onBudgetInput(e) { this.setData({ budgetInput: (e.detail && e.detail.value) || '' }); },

@@ -39,6 +39,13 @@ App({
     this.globalData.themeId = syncedThemeId();
     theme.applyToOpenPages(this.globalData.themeId);
     this._unsubTheme = store.subscribe(applySyncedTheme);
+    /* 跟随系统（theme='auto'）：系统深浅切换时按新系统主题重新解析并应用到已打开页面 */
+    if (typeof wx.onThemeChange === 'function') {
+      wx.onThemeChange(() => {
+        this.globalData.themeId = syncedThemeId();
+        theme.applyToOpenPages();
+      });
+    }
   },
   onError(error) {
     const issue = describeIssue('onError', error);

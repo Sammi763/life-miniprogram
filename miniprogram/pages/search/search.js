@@ -1,6 +1,7 @@
 const store = require('../../utils/store');
 const ui = require('../../utils/ui');
 const { searchAll, splitHighlight } = require('../../utils/search-utils');
+const { setPendingOpen } = require('../../utils/pending-open');
 const theme = require('../../utils/theme');
 
 const FILTERS = [
@@ -104,7 +105,7 @@ Page({
     if (item.kind === 'memory') return wx.navigateTo({ url: '/pages/memory/memory?id=' + encodeURIComponent(item.id) });
     /* money 是 tab 页带不了参数：经 storage 中转，money onShow 打开对应流水编辑 */
     if (item.kind === 'money') {
-      try { wx.setStorageSync('wb_life_pending_open', { kind: 'money', id: item.id, at: Date.now() }); } catch (error) { /* ignore */ }
+      setPendingOpen('money', item.id);
       return wx.switchTab({ url: '/pages/money/money' });
     }
     if (item.kind === 'plan') return wx.navigateTo({ url: '/pages/plan/plan?id=' + encodeURIComponent(item.id) });

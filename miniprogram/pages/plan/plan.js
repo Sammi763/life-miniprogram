@@ -155,8 +155,21 @@ Page({
   },
   /* 深链打开：按记录 id 直接构造表单，并把周历定位到该日程所在周 */
   openEditById(id) {
-    const source = store.state.records.plan[id];
+    let source = store.state.records.plan[id];
     if (!source || source.deletedAt || !source.data) return;
+    /* occurrence 是重复日程的单日覆盖记录，不可直接编辑：能找到系列就打开系列表单；
+       系列已不存在时只把周历定位到那天。若按一次性日程打开，保存会把 occurrence 覆写为
+       one-off 形状、破坏该系列的完成/跳过语义（今日页最近记录深链到此，见 navId） */
+    if (source.data.kind === 'occurrence') {
+      const series = store.state.records.plan[source.data.seriesId];
+      if (!(series && !series.deletedAt && series.data)) {
+        const orphanDate = source.data.date || todayString();
+        this.setData({ weekStart: getWeekDates(orphanDate)[0], selectedDate: orphanDate });
+        this.render();
+        return;
+      }
+      source = series;
+    }
     const data = source.data;
     const anchorDate = data.kind === 'series' ? (data.startDate || todayString()) : (data.date || todayString());
     this.setData({ weekStart: getWeekDates(anchorDate)[0], selectedDate: anchorDate });

@@ -324,6 +324,11 @@ function getReminderCapabilities() {
   return request('GET', '/api/reminders/capabilities');
 }
 
+/* 订阅授权成功后上报 +1（一次订阅 = 一次触达）；kind: 'habit' | 'bill' */
+function addReminderCredit(kind) {
+  return request('PUT', '/api/reminders/credit', { kind });
+}
+
 function scheduleReminder(planId, dueAt) {
   return request('PUT', '/api/reminders/' + encodeURIComponent(planId), { dueAt: Number(dueAt) });
 }
@@ -382,7 +387,7 @@ function deleteAccount() {
 module.exports = {
   getBaseUrl, setBaseUrl, getToken, getProfile, clearLogin, login, validateSession, checkHealth,
   updateProfile, ensureLogin, request, apiSync, apiPut, apiDelete,
-  getReminderCapabilities, scheduleReminder, cancelReminder,
+  getReminderCapabilities, addReminderCredit, scheduleReminder, cancelReminder,
   requestReminderSubscription, requirePrivacyAuthorization, openPrivacyContract,
   getInsight, deleteAccount, getRuntimeConfig: runtime.getRuntimeConfig, DEFAULT_BASE
 };

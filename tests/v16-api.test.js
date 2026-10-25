@@ -49,7 +49,13 @@ function localDate(offsetDays) {
 
     const capabilities = await request('/api/reminders/capabilities', { headers });
     assert.strictEqual(capabilities.status, 200);
-    assert.deepStrictEqual(await capabilities.json(), { enabled: true, templateId: 'template-id' });
+    const capBody = await capabilities.json();
+    /* v2.11 起响应扩展 habit/bill 两类（模板未配置时 enabled:false），原字段保留且值不变 */
+    assert.strictEqual(capBody.enabled, true, 'capabilities 原 enabled 字段不得回归');
+    assert.strictEqual(capBody.templateId, 'template-id', 'capabilities 原 templateId 字段不得回归');
+    assert.strictEqual(capBody.habit.enabled, false, '未配置习惯模板时 habit kind 必须静默停用');
+    assert.strictEqual(capBody.habit.credits, 0, 'habit 额度必须返回');
+    assert.strictEqual(capBody.bill.enabled, false, '未配置账单模板时 bill kind 必须静默停用');
 
     const dueAt = Math.ceil((Date.now() + 10 * 60 * 1000) / 60000) * 60000;
     const dueDate = new Date(dueAt);

@@ -2,6 +2,7 @@ const store = require('../../utils/store');
 const sync = require('../../utils/sync');
 const ui = require('../../utils/ui');
 const habitUtils = require('../../utils/habit-utils');
+const reminderClient = require('../../utils/reminder-client');
 const { syncTabBar, attachOverlayWatcher, TAB } = require('../../utils/tabbar');
 const theme = require('../../utils/theme');
 const share = require('../../utils/share');
@@ -25,9 +26,13 @@ Page({
     today: '',
     /* 补录/修正过去日期的弹层 */
     backfillSheetShow: false,
-    backfillForm: { habitId: '', name: '', mode: 'check', unit: '', date: '', value: '', hadEntry: false }
+    backfillForm: { habitId: '', name: '', mode: 'check', unit: '', date: '', value: '', hadEntry: false },
+    /* 打卡提醒（v2.11 提醒矩阵）：开关 + 提醒时间 + 剩余额度；额度耗尽显示续订横幅 */
+    habitReminder: { enabled: false, capEnabled: false, credits: 0, time: reminderClient.DEFAULT_HABIT_TIME, banner: '' }
   },
   unsub: null,
+  /* 最近一次能力查询结果（enabled/templateId/credits），onShow 刷新 */
+  reminderCaps: null,
   onLoad() {
     theme.applyToPage(this);
     // 弹层打开时隐藏悬浮导航：自定义 tabBar 压在页面之上，「保存」按钮会被它盖住（详见 utils/tabbar.js）
@@ -35,7 +40,16 @@ Page({
     this.unsub = store.subscribe(() => this.render());
     this.render();
   },
-  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); },
+  onShow() {
+    theme.applyToPage(this); share.enableShareMenu(); this.render();
+    this.refreshReminderCaps();
+  },
+  async refreshReminderCaps() {
+    const caps = await reminderClient.fetchCaps();
+    if (!caps) return;
+    this.reminderCaps = caps;
+    this.render();
+  },
   onShareAppMessage: share.onShareAppMessage('habit'),
   onShareTimeline: share.onShareTimeline('habit'),
   onUnload() {
@@ -97,7 +111,8 @@ Page({
       habits: habits.map((item) => ({ ...item, streakText: item.streak > 0 ? item.streak + ' 天' : '' })),
       offline: s.syncState === 'offline',
       today: t,
-      historyGrid, historyRange, minDate
+      historyGrid, historyRange, minDate,
+      habitReminder: reminderClient.buildReminderView(s.records, 'habit', this.reminderCaps)
     });
     /* 角标：今日未完成的习惯数，打卡后即时刷新 */
     const undone = habits.filter((item) => !item.done).length;
@@ -267,6 +282,46 @@ Page({
     ui.armUndo(this, { text: '当日打卡已删除', onUndo: () => sync.upsert('habit', entry.data, entry.id) });
   },
   onUndoTap() { ui.performUndo(this); },
+
+  // ---- 打卡提醒（v2.11）：开关/时间写 settings 随账号同步；开启与续订时弹订阅并上报额度 ----
+  async onHabitReminderToggle(e) {
+    const enable = Boolean(e.detail && e.detail.value);
+    if (!enable) {
+      reminderClient.saveReminderSettings(store.state.records, { habitReminderEnabled: false });
+      return;
+    }
+    if (!this.reminderCaps) {
+      this.reminderCaps = await reminderClient.fetchCaps();
+    }
+    const result = await reminderClient.subscribeAndCredit('habit', this.reminderCaps || {});
+    if (result.ok) {
+      wx.showToast({ title: '提醒已开启', icon: 'success' });
+    } else if (result.reason === 'unavailable') {
+      wx.showToast({ title: '服务端未开启习惯提醒', icon: 'none' });
+    } else if (result.reason === 'rejected') {
+      wx.showToast({ title: '未同意订阅，提醒不会送达', icon: 'none' });
+    } else {
+      wx.showToast({ title: '额度上报失败，可稍后续订', icon: 'none' });
+    }
+    // 开关保存用户意图；订阅被拒时额度保持 0，由横幅引导续订
+    reminderClient.saveReminderSettings(store.state.records, { habitReminderEnabled: true });
+    this.refreshReminderCaps();
+  },
+  onHabitReminderTime(e) {
+    const value = String(e.detail && e.detail.value || '');
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) return;
+    reminderClient.saveReminderSettings(store.state.records, { habitReminderTime: value });
+    wx.showToast({ title: '提醒时间已保存', icon: 'success' });
+  },
+  async onReminderRenew() {
+    if (ui.isRepeatedTap(this, 'habit-reminder-renew', 800)) return;
+    if (!this.reminderCaps) this.reminderCaps = await reminderClient.fetchCaps();
+    const result = await reminderClient.subscribeAndCredit('habit', this.reminderCaps || {});
+    if (result.ok) wx.showToast({ title: '已续订', icon: 'success' });
+    else if (result.reason === 'rejected') wx.showToast({ title: '未同意订阅', icon: 'none' });
+    else wx.showToast({ title: '续订失败，请稍后重试', icon: 'none' });
+    this.refreshReminderCaps();
+  },
 
   /* 长按卡片 = 编辑/删除入口；「管理」按钮保留为可见兜底 */
   onCardLongpress(e) {

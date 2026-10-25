@@ -11,11 +11,19 @@ const {
 } = require('../../utils/finance');
 const { buildBillAlerts, calculateAccountBalances } = require('../../utils/ledger-utils');
 const categoryUtils = require('../../utils/category-utils');
+const { consumePendingOpen: consumePendingOpenStorage } = require('../../utils/pending-open');
+const reminderClient = require('../../utils/reminder-client');
 const { syncTabBar, attachOverlayWatcher, TAB } = require('../../utils/tabbar');
 const theme = require('../../utils/theme');
 const share = require('../../utils/share');
 
 const TRANSFER_CATEGORY = '账户转账';
+/*
+ * 列表分批渲染：流水多的月份一次性把全部日期分组 setData 会撑大单次数据量。
+ * 这里按「日期分组数」分批下发，月汇总、分类 chips、月历与角标始终按全月计算，
+ * 只裁剪列表视图的 groups 载荷（与随记时间线 v2.6 同一模式）。
+ */
+const MONEY_LIST_PAGE_GROUPS = 10;
 
 function parseMoneyInput(value) {
   const source = String(value === undefined || value === null ? '' : value).trim();
@@ -40,6 +48,7 @@ Page({
     month: '', monthText: '',
     sumIn: 0, sumOut: 0, sumTransfer: 0,
     filter: '', filters: [], groups: [],
+    hasMore: false, groupTotal: 0,
     accounts: [],
     accountOverview: { assetTotal: 0, liabilityTotal: 0, netAssets: 0, assetCount: 0, liabilityCount: 0, accountCount: 0 },
     billAlerts: [],
@@ -62,9 +71,15 @@ Page({
     /* 记账月历：列表 / 月历两种视图；月历点某天进入当天流水 */
     viewMode: 'list',
     calendarWeeks: [],
-    dayFilter: ''
+    dayFilter: '',
+    /* 还款提醒（v2.11 提醒矩阵）：开关写 settings；额度耗尽显示续订横幅 */
+    billReminder: { enabled: false, capEnabled: false, credits: 0, time: '', banner: '' }
   },
   unsub: null,
+  /* 最近一次能力查询结果，onShow 刷新 */
+  reminderCaps: null,
+  /* 已下发的日期分组数上限；只在筛选/切月/切视图时回到首批，同步拉取不重置它 */
+  visibleGroups: MONEY_LIST_PAGE_GROUPS,
   onLoad() {
     theme.applyToPage(this);
     // 弹层打开时隐藏悬浮导航：自定义 tabBar 压在页面之上，「保存」按钮会被它盖住（详见 utils/tabbar.js）
@@ -76,6 +91,7 @@ Page({
   onShow() {
     theme.applyToPage(this); share.enableShareMenu(); syncTabBar(this, TAB.MONEY); this.render();
     this.consumePendingOpen();
+    this.refreshReminderCaps();
   },
   onShareAppMessage: share.onShareAppMessage('money'),
   onShareTimeline: share.onShareTimeline('money'),
@@ -85,6 +101,12 @@ Page({
   },
   retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() { sync.pull().then(() => wx.stopPullDownRefresh()).catch(() => wx.stopPullDownRefresh()); },
+  async refreshReminderCaps() {
+    const caps = await reminderClient.fetchCaps();
+    if (!caps) return;
+    this.reminderCaps = caps;
+    this.render();
+  },
 
   render() {
     const state = store.state;
@@ -125,6 +147,9 @@ Page({
     let shown = this.data.filter ? groups.map((group) => ({ ...group, items: group.items.filter((item) => item.type === 'expense' && item.category === this.data.filter) })).filter((group) => group.items.length) : groups;
     /* 月历视图：按日支出合计；从月历点某天会切回列表并过滤到当天（dayFilter） */
     if (this.data.dayFilter) shown = shown.filter((group) => group.date === this.data.dayFilter);
+    /* 分批：只裁剪列表载荷；月历视图（calendarWeeks）仍用全月分组构建，不受影响 */
+    const visibleGroups = Math.max(MONEY_LIST_PAGE_GROUPS, Number(this.visibleGroups) || 0);
+    const listGroups = shown.slice(0, visibleGroups);
     const calendarWeeks = this.data.viewMode === 'calendar' ? this.buildCalendarGroups(month, groups) : this.data.calendarWeeks;
     /* 分类管理弹层打开时，行数据（含引用数）随每次渲染刷新 */
     const catRows = this.data.catSheetShow
@@ -144,13 +169,46 @@ Page({
       month, monthText: year + ' 年 ' + Number(number) + ' 月',
       sumIn: roundMoney(sumIn), sumOut: roundMoney(sumOut), sumTransfer: roundMoney(sumTransfer),
       sumInText: formatMoney(sumIn), sumOutText: formatMoney(sumOut), sumTransferText: formatMoney(sumTransfer),
-      filters, groups: shown, accounts, accountOverview: ledger.overview,
+      filters, groups: listGroups, groupTotal: shown.length, hasMore: shown.length > listGroups.length,
+      accounts, accountOverview: ledger.overview,
       billAlerts: buildBillAlerts(state.records.accounts || {}, state.records.money || {}, new Date()),
       accountOptions, transferAccounts: ledger.list.map((account) => ({ id: account.id, name: account.name, kind: account.kind })),
       offline: state.syncState === 'offline',
+      billReminder: reminderClient.buildReminderView(state.records, 'bill', this.reminderCaps),
       catRows,
       calendarWeeks
     });
+  },
+
+  /* ---- 还款提醒（v2.11）：开启/续订时弹订阅并上报额度；额度由服务端发送成功后扣减 ---- */
+  async onBillReminderToggle(event) {
+    const enable = Boolean(event.detail && event.detail.value);
+    if (!enable) {
+      reminderClient.saveReminderSettings(store.state.records, { billReminderEnabled: false });
+      return;
+    }
+    if (!this.reminderCaps) this.reminderCaps = await reminderClient.fetchCaps();
+    const result = await reminderClient.subscribeAndCredit('bill', this.reminderCaps || {});
+    if (result.ok) {
+      wx.showToast({ title: '提醒已开启', icon: 'success' });
+    } else if (result.reason === 'unavailable') {
+      wx.showToast({ title: '服务端未开启还款提醒', icon: 'none' });
+    } else if (result.reason === 'rejected') {
+      wx.showToast({ title: '未同意订阅，提醒不会送达', icon: 'none' });
+    } else {
+      wx.showToast({ title: '额度上报失败，可稍后续订', icon: 'none' });
+    }
+    reminderClient.saveReminderSettings(store.state.records, { billReminderEnabled: true });
+    this.refreshReminderCaps();
+  },
+  async onReminderRenew() {
+    if (ui.isRepeatedTap(this, 'bill-reminder-renew', 800)) return;
+    if (!this.reminderCaps) this.reminderCaps = await reminderClient.fetchCaps();
+    const result = await reminderClient.subscribeAndCredit('bill', this.reminderCaps || {});
+    if (result.ok) wx.showToast({ title: '已续订', icon: 'success' });
+    else if (result.reason === 'rejected') wx.showToast({ title: '未同意订阅', icon: 'none' });
+    else wx.showToast({ title: '续订失败，请稍后重试', icon: 'none' });
+    this.refreshReminderCaps();
   },
 
   /* 月历网格：周一起始；单元格只展示有流水的日子（空位补齐）。outText 复用 formatMoney 口径。 */
@@ -178,6 +236,7 @@ Page({
     const mode = event.currentTarget.dataset.mode === 'calendar' ? 'calendar' : 'list';
     if (mode === this.data.viewMode) return;
     this.setData({ viewMode: mode });
+    this.resetListPage();
     this.render();
   },
   /* 月历点某天：切回列表并过滤到当天；再点同一天取消过滤 */
@@ -186,23 +245,34 @@ Page({
     if (!date) return;
     const next = this.data.dayFilter === date ? '' : date;
     this.setData({ dayFilter: next, viewMode: 'list' });
+    this.resetListPage();
     this.render();
   },
   clearDayFilter() {
     this.setData({ dayFilter: '' });
+    this.resetListPage();
     this.render();
   },
 
   prevMonth() { this.shiftMonth(-1); },
   nextMonth() { this.shiftMonth(1); },
+  onReachBottom() { if (this.data.viewMode === 'list' && this.data.hasMore) this.loadMore(); },
+  loadMore() {
+    this.visibleGroups = (Number(this.visibleGroups) || MONEY_LIST_PAGE_GROUPS) + MONEY_LIST_PAGE_GROUPS;
+    this.render();
+  },
+  /* 筛选/切月/切视图时回到首批，避免「换了条件却还停在很深的页码」 */
+  resetListPage() { this.visibleGroups = MONEY_LIST_PAGE_GROUPS; },
   shiftMonth(offset) {
     const [year, month] = this.data.month.split('-').map(Number);
     const target = new Date(year, month - 1 + offset, 1);
     this.setData({ month: target.getFullYear() + '-' + String(target.getMonth() + 1).padStart(2, '0'), filter: '', dayFilter: '' });
+    this.resetListPage();
     this.render();
   },
   setFilter(event) {
     this.setData({ filter: event.currentTarget.dataset.cat === this.data.filter ? '' : event.currentTarget.dataset.cat });
+    this.resetListPage();
     this.render();
   },
   goReport() { wx.navigateTo({ url: '/pages/report/report' }); },
@@ -240,13 +310,11 @@ Page({
     // 编辑时带上原分类：即使已被隐藏也要出现在选择器里，保证原值可见可选
     this.setData({ sheetShow: true, cats: this.categoryChoices(type, form.category), form });
   },
-  /* 搜索页深链中转：search 写入 storage，这里消费后打开对应流水 */
+  /* 搜索页/今日页深链中转：写入方经 utils/pending-open，这里消费后打开对应流水 */
   consumePendingOpen() {
-    let pending = null;
-    try { pending = wx.getStorageSync('wb_life_pending_open'); } catch (error) { return; }
-    if (!pending || pending.kind !== 'money' || !pending.id) return;
-    try { wx.removeStorageSync('wb_life_pending_open'); } catch (error) { /* ignore */ }
-    this.openEditById(pending.id);
+    const id = consumePendingOpenStorage('money');
+    if (!id) return;
+    this.openEditById(id);
   },
   /* 编辑弹层内的删除按钮：立即执行 + 5 秒撤销条 */
   removeTransaction() {

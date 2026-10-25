@@ -19,6 +19,11 @@ const STATUSES = [
 /* 工具栏的状态筛选：把「全部状态」与 STATUSES 合并成一组 chips */
 const STATUS_FILTERS = [{ key: '', label: '全部状态' }].concat(STATUSES);
 const STARS = [1, 2, 3, 4, 5];
+/*
+ * 分批渲染：卡片墙与列表共用同一份 items，按「累计条数」分批下发，
+ * 与随记时间线 v2.6 同一模式；年度统计始终按筛选前全量计算。
+ */
+const MEDIA_PAGE_SIZE = 40;
 
 function typeLabel(kind) {
   return ({ book: '书', movie: '影', music: '音' })[kind] || '藏';
@@ -34,6 +39,8 @@ Page({
     statusFilter: '',
     viewMode: 'grid',
     items: [],
+    hasMore: false,
+    shownTotal: 0,
     stats: { book: 0, movie: 0, music: 0, average: '—' },
     today: '',
     sheetShow: false,
@@ -42,6 +49,8 @@ Page({
     form: { id: '', kind: 'book', title: '', status: 'wishlist', rating: 0, comment: '', date: '' }
   },
   unsub: null,
+  /* 已下发的条数上限；只在筛选 chips 变化时回到首批，同步拉取不重置它 */
+  visibleCount: MEDIA_PAGE_SIZE,
 
   onLoad(options) {
     theme.applyToPage(this);
@@ -91,9 +100,14 @@ Page({
       .filter((item) => !this.data.statusFilter || item.status === this.data.statusFilter);
     const finishedThisYear = records.filter((item) => item.status === 'done' && item.date.slice(0, 4) === year);
     const rated = finishedThisYear.filter((item) => item.rating > 0);
+    /* 分批下发：只裁剪 items 载荷；年度统计仍按全量计算 */
+    const visibleCount = Math.max(MEDIA_PAGE_SIZE, Number(this.visibleCount) || 0);
+    const listItems = shown.slice(0, visibleCount);
     this.setData({
       offline: store.state.syncState === 'offline',
-      items: shown,
+      items: listItems,
+      hasMore: shown.length > listItems.length,
+      shownTotal: shown.length,
       stats: {
         book: finishedThisYear.filter((item) => item.kind === 'book').length,
         movie: finishedThisYear.filter((item) => item.kind === 'movie').length,
@@ -103,11 +117,20 @@ Page({
     });
   },
 
-  setFilter(event) { this.setData({ filter: event.currentTarget.dataset.kind }); this.render(); },
+  /* 滚到底自动加载更多；底部按钮保留作为兜底 */
+  onReachBottom() { if (this.data.hasMore) this.loadMore(); },
+  loadMore() {
+    this.visibleCount = (Number(this.visibleCount) || MEDIA_PAGE_SIZE) + MEDIA_PAGE_SIZE;
+    this.render();
+  },
+  /* 筛选条件变化时回到首批 */
+  resetListPage() { this.visibleCount = MEDIA_PAGE_SIZE; this.render(); },
+
+  setFilter(event) { this.setData({ filter: event.currentTarget.dataset.kind }); this.resetListPage(); },
   setStatusFilter(event) {
     const status = event.currentTarget.dataset.status;
     this.setData({ statusFilter: status === this.data.statusFilter ? '' : status });
-    this.render();
+    this.resetListPage();
   },
   setView(event) { this.setData({ viewMode: event.currentTarget.dataset.mode }); },
   openAdd() {

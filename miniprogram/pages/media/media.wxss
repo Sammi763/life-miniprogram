@@ -28,3 +28,6 @@
 .rating-input { color: var(--line); font-size: 48rpx; letter-spacing: 8rpx; }
 .star-on { color: var(--terra); }
 textarea { width: auto; min-height: 120rpx; background: var(--surface); border: 1rpx solid var(--line); border-radius: 16rpx; padding: 20rpx 24rpx; font-size: 28rpx; }
+/* 分批渲染的「加载更多」入口（与随记时间线同一交互模式） */
+.more-card { padding: 20rpx; }
+.more-btn { min-height: 76rpx; font-size: 26rpx; }

@@ -1,9 +1,12 @@
 /*
  * 主题只保存一个受控的主题 ID；页面使用内联 CSS 变量承接配色，避免把用户输入
  * 拼进 style。选择会写入 settings.app，因而能跟随同步记录在设备间保持一致。
+ * v2.11 起允许 'auto'（跟随系统深浅）：settings.theme 可存 auto，本机存储
+ * wb_life_theme 只记「最后一个具体主题」，auto 浅色时回退到它（见 lastLightThemeId）。
  */
 const THEME_STORAGE_KEY = 'wb_life_theme';
 const DEFAULT_THEME_ID = 'forest';
+const AUTO_THEME_ID = 'auto';
 
 const THEMES = [
   {
@@ -78,16 +81,58 @@ const THEMES = [
 
 const THEME_MAP = Object.fromEntries(THEMES.map((theme) => [theme.id, theme]));
 
+/* 「跟随系统」选择器项：预览图为上浅下深双色渐变，只作为选项存在，不是真实主题 */
+const AUTO_THEME_OPTION = {
+  id: 'auto',
+  name: '跟随系统',
+  detail: '深浅随系统切换',
+  preview: 'linear-gradient(180deg, #F3F5F2 0%, #F3F5F2 49%, #171B1E 51%, #171B1E 100%)'
+};
+
 function normalizeThemeId(value) {
   return THEME_MAP[value] ? value : DEFAULT_THEME_ID;
 }
 
-function readStoredThemeId() {
+/* 选择入口用：允许 'auto'，其余未知值回退具体主题（normalizeThemeId 保持旧语义供旧调用兼容） */
+function normalizeThemeChoice(value) {
+  return value === AUTO_THEME_ID ? AUTO_THEME_ID : normalizeThemeId(value);
+}
+
+/* 系统当前深浅；拿不到（旧基础库/异常）时按浅色处理 */
+function systemPrefersDark() {
   try {
-    return normalizeThemeId(wx.getStorageSync(THEME_STORAGE_KEY));
+    if (typeof wx === 'undefined') return false;
+    let value = '';
+    if (typeof wx.getAppBaseInfo === 'function') {
+      const info = wx.getAppBaseInfo();
+      if (info && info.theme) value = info.theme;
+    }
+    if (!value && typeof wx.getSystemInfoSync === 'function') {
+      const info = wx.getSystemInfoSync();
+      if (info && info.theme) value = info.theme;
+    }
+    return value === 'dark';
   } catch (error) {
-    return DEFAULT_THEME_ID;
+    return false;
   }
+}
+
+function readStoredRawThemeId() {
+  try {
+    return wx.getStorageSync(THEME_STORAGE_KEY);
+  } catch (error) {
+    return '';
+  }
+}
+
+function readStoredThemeId() {
+  return normalizeThemeId(readStoredRawThemeId());
+}
+
+/* auto 浅色分支：本机存的最后一个「具体浅色」主题；存了 night/auto/未知值则回退 forest */
+function lastLightThemeId() {
+  const raw = readStoredRawThemeId();
+  return THEME_MAP[raw] && raw !== 'night' ? raw : DEFAULT_THEME_ID;
 }
 
 function readSyncedThemeId() {
@@ -95,6 +140,7 @@ function readSyncedThemeId() {
     const store = require('./store');
     const setting = store.state.records.settings && store.state.records.settings.app;
     const value = setting && !setting.deletedAt && setting.data && setting.data.theme;
+    if (value === AUTO_THEME_ID) return AUTO_THEME_ID;
     return THEME_MAP[value] ? value : '';
   } catch (error) {
     return '';
@@ -105,8 +151,16 @@ function saveThemeId(id) {
   try { wx.setStorageSync(THEME_STORAGE_KEY, id); } catch (error) { /* local preference is best effort */ }
 }
 
+function resolveThemeId(preferredId) {
+  const raw = preferredId === undefined || preferredId === null || preferredId === ''
+    ? readSyncedThemeId()
+    : preferredId;
+  if (raw === AUTO_THEME_ID) return systemPrefersDark() ? 'night' : lastLightThemeId();
+  return normalizeThemeId(raw || readStoredThemeId());
+}
+
 function getThemeId(preferredId) {
-  return normalizeThemeId(preferredId || readSyncedThemeId() || readStoredThemeId());
+  return resolveThemeId(preferredId);
 }
 
 function getTheme(preferredId) {
@@ -128,14 +182,15 @@ function getThemeData(preferredId) {
 }
 
 function getThemeOptions(preferredId) {
-  const activeId = getThemeId(preferredId);
-  return THEMES.map((theme) => ({
+  const isAuto = preferredId === AUTO_THEME_ID;
+  const activeId = resolveThemeId(preferredId);
+  return [Object.assign({ selected: isAuto }, AUTO_THEME_OPTION)].concat(THEMES.map((theme) => ({
     id: theme.id,
     name: theme.name,
     detail: theme.detail,
     preview: theme.preview,
-    selected: theme.id === activeId
-  }));
+    selected: !isAuto && theme.id === activeId
+  })));
 }
 
 /*
@@ -179,15 +234,18 @@ function applyToOpenPages(preferredId) {
 }
 
 function selectTheme(preferredId) {
-  const id = getThemeId(preferredId);
-  saveThemeId(id);
+  const id = resolveThemeId(preferredId);
+  /* auto 只改变设置记录里的意图，不覆盖本机「最后一个具体主题」——浅色回退要用它 */
+  if (preferredId !== AUTO_THEME_ID) saveThemeId(id);
   return applyToOpenPages(id);
 }
 
 module.exports = {
+  AUTO_THEME_ID,
   DEFAULT_THEME_ID,
   THEMES,
   normalizeThemeId,
+  normalizeThemeChoice,
   getThemeId,
   getTheme,
   getThemeStyle,

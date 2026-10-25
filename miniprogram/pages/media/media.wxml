@@ -30,6 +30,8 @@
   </view>
 </view>
 
+<view wx:if="{{hasMore}}" class="card more-card"><button class="btn btn-ghost more-btn" bindtap="loadMore" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">加载更多（已显示 {{items.length}}/{{shownTotal}} 条）</button></view>
+
 <view class="fab" hover-class="fab-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openAdd">＋</view>
 <view wx:if="{{sheetShow}}" class="mask" bindtap="closeSheet"></view>
 <view wx:if="{{sheetShow}}" class="sheet" catchtap="noop">

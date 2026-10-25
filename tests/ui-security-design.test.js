@@ -24,7 +24,10 @@ assert.match(theme, /id: 'sky'/, '应提供月白主题');
 assert.match(theme, /id: 'violet'/, '应提供暮紫主题');
 assert.match(mine, /onThemeSelect/, '“我的”页应提供主题切换入口');
 assert.match(tabbar, /themeStyle/, '自定义导航应随页面主题同步');
-assert.strictEqual(app.window.navigationBarBackgroundColor, '#F3F5F2', '导航栏应使用新的低饱和中性色');
+/* v2.11 起导航栏底色走 darkmode 主题变量（@navBgColor），具体色值钉在 theme.json（浅色仍为低饱和中性色） */
+assert.strictEqual(app.window.navigationBarBackgroundColor, '@navBgColor', '导航栏底色应走 darkmode 主题变量');
+const themeJson = JSON.parse(read('miniprogram/theme.json'));
+assert.strictEqual(themeJson.light.navBgColor, '#F3F5F2', '浅色导航栏应使用低饱和中性色');
 assert.match(sync, /function shouldUseRealtime/, '本地调试不应无条件尝试 WebSocket 连接');
 
 console.log('UI_SECURITY_DESIGN_TEST_PASSED');

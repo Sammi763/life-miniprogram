@@ -14,7 +14,7 @@ const { createStore } = require('./db/store');
 const { COLLECTIONS } = require('./db/mysql-store');
 const { exchangeLoginCode, sendSubscriptionMessage } = require('./wechat');
 const { getOneOffReminderPlan, ID_PATTERN, validateRecordData } = require('./validation');
-const { createReminderWorker, getReminderCapabilities, startReminderWorker } = require('./reminders');
+const { createReminderWorker, getReminderCapabilities, startReminderWorker, reminderKindEnabled } = require('./reminders');
 const { createInsightService } = require('./ai-insights');
 
 const COLLECTION_SET = new Set(COLLECTIONS);
@@ -323,8 +323,43 @@ function createApp(store, config, sockets, services) {
     }
   });
 
-  app.get('/api/reminders/capabilities', auth, (req, res) => {
-    res.json(getReminderCapabilities(config));
+  /* 提醒能力：原 enabled/templateId 字段保留（单次日程提醒），v2.11 扩展 habit/bill 两类矩阵的 enabled/templateId/credits */
+  app.get('/api/reminders/capabilities', auth, async (req, res, next) => {
+    try {
+      const capability = getReminderCapabilities(config);
+      let credits = { habit: 0, bill: 0 };
+      if (typeof store.getReminderCredits === 'function') credits = await store.getReminderCredits(req.openid);
+      res.json({
+        enabled: capability.enabled,
+        templateId: capability.templateId,
+        habit: {
+          enabled: reminderKindEnabled(config, 'habit'),
+          templateId: reminderKindEnabled(config, 'habit') ? config.wxHabitReminderTemplateId : '',
+          credits: Number(credits.habit) || 0
+        },
+        bill: {
+          enabled: reminderKindEnabled(config, 'bill'),
+          templateId: reminderKindEnabled(config, 'bill') ? config.wxBillReminderTemplateId : '',
+          credits: Number(credits.bill) || 0
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  /* 订阅额度上报：requestSubscribeMessage 必须由点击触发，授权成功后客户端上报 +1（一次订阅 = 一次触达） */
+  const CREDIT_KINDS = new Set(['habit', 'bill']);
+  app.put('/api/reminders/credit', auth, createRateLimiter(Number(config.reminderRateLimit) || 30, 60 * 1000), async (req, res, next) => {
+    try {
+      const kind = String((req.body && req.body.kind) || '');
+      if (!CREDIT_KINDS.has(kind)) return res.status(422).json({ error: 'bad_reminder_kind' });
+      if (typeof store.addReminderCredit !== 'function') return res.status(503).json({ error: 'reminders_unavailable' });
+      const credits = await store.addReminderCredit(req.openid, kind, 1);
+      res.json({ kind, credits });
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.get('/api/reminders/:planId', auth, validateRecordId, async (req, res, next) => {

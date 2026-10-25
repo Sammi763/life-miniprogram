@@ -72,3 +72,6 @@
 .import-note { margin-top: 12rpx; }
 .import-actions { display: flex; gap: 16rpx; }
 .import-actions .btn { flex: 1; }
+/* 提醒设置弹层（v2.11）：续订按钮与说明 */
+.reminder-renew { min-height: 64rpx; font-size: 26rpx; padding: 0 28rpx; display: flex; align-items: center; }
+.reminder-note { margin-top: 8rpx; }
