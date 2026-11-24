@@ -125,11 +125,10 @@ function zIndexOf(source, selector) {
 
 const sheetZ = zIndexOf(appWxss, '.sheet');
 const maskZ = zIndexOf(appWxss, '.mask');
-const moneyFabZ = zIndexOf(read('miniprogram/pages/money/money.wxss'), '.fab');
 const habitFabZ = zIndexOf(read('miniprogram/pages/habit/habit.wxss'), '.fab');
 
-assert.ok(sheetZ > Math.max(moneyFabZ, habitFabZ), `.sheet(${sheetZ}) 必须在 .fab(${Math.max(moneyFabZ, habitFabZ)}) 之上`);
-assert.ok(maskZ > Math.max(moneyFabZ, habitFabZ), `.mask(${maskZ}) 必须盖住 .fab`);
+assert.ok(sheetZ > habitFabZ, `.sheet(${sheetZ}) 必须在 .fab(${habitFabZ}) 之上`);
+assert.ok(maskZ > habitFabZ, `.mask(${maskZ}) 必须盖住 .fab`);
 assert.ok(maskZ < sheetZ, `.mask(${maskZ}) 必须在 .sheet(${sheetZ}) 之下，不能盖住弹层本身`);
 
 /* 悬浮导航：必须有隐藏态，且隐藏后不能再接收点击 */

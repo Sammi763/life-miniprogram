@@ -1,6 +1,7 @@
+const { toCents, fromCents } = require('./amount');
 const { addDays, derivePlanOccurrences, valuesOfRecords } = require('./plan-utils');
 const { buildMemorySummary } = require('./memory-utils');
-const { isEntryDone } = require('./habit-utils');
+const { isEntryDone, isScheduled } = require('./habit-utils');
 
 function oneDecimal(value) {
   return Math.round((Number(value) || 0) * 10) / 10;
@@ -19,7 +20,7 @@ function buildWeeklyReview(source, weekStart) {
   valuesOfRecords(source && source.money).forEach((record) => {
     const data = record.data;
     if (data.date < weekStart || data.date > end) return;
-    const amount = Number(data.amount) || 0;
+    const amount = toCents(data.amount) || 0;
     if (data.type === 'income') income += amount;
     if (data.type === 'expense') expense += amount;
   });
@@ -31,9 +32,13 @@ function buildWeeklyReview(source, weekStart) {
     if (record.data.kind === 'entry' && record.data.date >= weekStart && record.data.date <= end) entries[record.data.habitId + '|' + record.data.date] = record.data;
   });
   let habitDone = 0;
+  let habitTotal = 0;
   definitions.forEach((definition) => {
     for (let offset = 0; offset < 7; offset++) {
-      const data = entries[definition.id + '|' + addDays(weekStart, offset)];
+      const date = addDays(weekStart, offset);
+      if (!isScheduled(definition, date)) continue;
+      habitTotal++;
+      const data = entries[definition.id + '|' + date];
       if (isEntryDone(data, definition)) habitDone++;
     }
   });
@@ -61,9 +66,9 @@ function buildWeeklyReview(source, weekStart) {
   const memoryMap = Object.fromEntries(memoryItems.map((record) => [record.id, record]));
   return {
     period: { start: weekStart, end },
-    finance: { income: oneDecimal(income), expense: oneDecimal(expense), balance: oneDecimal(income - expense) },
+    finance: { income: fromCents(income), expense: fromCents(expense), balance: fromCents(income - expense) },
     plan: { total: occurrences.length, done: planDone, rate: occurrences.length ? oneDecimal(planDone * 100 / occurrences.length) : 0 },
-    habit: { total: definitions.length * 7, done: habitDone, rate: definitions.length ? oneDecimal(habitDone * 100 / (definitions.length * 7)) : 0 },
+    habit: { total: habitTotal, done: habitDone, rate: habitTotal ? oneDecimal(habitDone * 100 / habitTotal) : 0 },
     weight,
     memories: buildMemorySummary(memoryMap),
     nextPlans

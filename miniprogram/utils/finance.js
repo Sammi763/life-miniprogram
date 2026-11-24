@@ -1,4 +1,5 @@
 /* 财务领域常量与纯计算：记账页面和测试共用，避免分类与资产口径分叉。 */
+const { toCents, fromCents } = require('./amount');
 const { calculateAccountBalances } = require('./ledger-utils');
 const EXPENSE_CATEGORIES = [
   '餐饮', '买菜', '水果零食', '交通', '打车出行', '房租房贷', '水电燃气', '通讯网费',
@@ -26,7 +27,7 @@ const ACCOUNT_PRESETS = [
 ];
 
 function roundMoney(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
+  return fromCents(toCents(value) || 0);
 }
 
 function accountData(record) {

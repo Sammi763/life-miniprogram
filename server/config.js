@@ -26,6 +26,13 @@ function listFrom(value) {
   return String(value || '').split(',').map((item) => item.trim()).filter((item) => /^https:\/\//.test(item));
 }
 
+function reminderFields(value, envKey) {
+  if (!value) return null;
+  const fields = /^\s*(thing\d+)\s*,\s*((?:time|date)\d+)\s*$/.exec(value);
+  if (!fields) throw new Error('Invalid subscription template fields: ' + envKey);
+  return { title: fields[1], when: fields[2] };
+}
+
 function loadConfig() {
   const fileEnv = readEnvFile(path.join(__dirname, '.env'));
   const env = { ...fileEnv, ...process.env };
@@ -34,8 +41,10 @@ function loadConfig() {
   return {
     port: numberFrom(env.PORT, 8787),
     bindHost: env.BIND_HOST || (devMode ? '0.0.0.0' : '127.0.0.1'),
+    syncGeneration: String(env.SYNC_GENERATION || '1').trim().slice(0, 80) || '1',
     releaseVersion: String(env.RELEASE_VERSION || 'unversioned').slice(0, 80),
     dataDir: env.DATA_DIR || path.join(__dirname, 'data'),
+    avatarDir: env.AVATAR_DIR || '',
     storageDriver: env.STORAGE_DRIVER || 'mysql',
     tokenTtlDays: numberFrom(env.TOKEN_TTL_DAYS, 30),
     devPhoneNumber: env.DEV_PHONE_NUMBER || '',
@@ -46,6 +55,11 @@ function loadConfig() {
     // v2.11 提醒矩阵：习惯打卡提醒与账单还款提醒各自独立模板；未配置的 kind 静默停用
     wxHabitReminderTemplateId: env.WX_HABIT_REMINDER_TEMPLATE_ID || '',
     wxBillReminderTemplateId: env.WX_BILL_REMINDER_TEMPLATE_ID || '',
+    reminderFields: {
+      plan: reminderFields(env.WX_REMINDER_FIELDS, 'WX_REMINDER_FIELDS'),
+      habit: reminderFields(env.WX_HABIT_REMINDER_FIELDS, 'WX_HABIT_REMINDER_FIELDS'),
+      bill: reminderFields(env.WX_BILL_REMINDER_FIELDS, 'WX_BILL_REMINDER_FIELDS')
+    },
     // 习惯提醒的兜底发送小时（用户在设置里未填 habitReminderTime 时使用），默认 20:00
     habitReminderHour: numberFrom(env.HABIT_REMINDER_HOUR, 20),
     reminderWorkerIntervalMs: numberFrom(env.REMINDER_WORKER_INTERVAL_MS, 60000),
@@ -55,7 +69,8 @@ function loadConfig() {
     hasDedicatedAiEncryptionKey: Boolean(dedicatedEncryptionKey),
     aiInsightRateLimit: numberFrom(env.AI_INSIGHT_RATE_LIMIT, 10),
     ai: {
-      enabled: booleanFrom(env.AI_ENABLED, true),
+      enabled: devMode && booleanFrom(env.AI_ENABLED, true),
+      trialEnabled: !devMode && booleanFrom(env.AI_TRIAL_ENABLED, false),
       provider: env.AI_PROVIDER || 'deepseek',
       baseUrl: env.AI_BASE_URL || 'https://api.deepseek.com',
       model: env.AI_MODEL || 'deepseek-flash',

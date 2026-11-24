@@ -37,3 +37,6 @@
 .repeat-option { flex: 1; text-align: center; border: 1rpx solid var(--line); border-radius: 16rpx; padding: 16rpx 8rpx; color: var(--ink-2); font-size: 26rpx; }
 .repeat-option-on { border-color:var(--accent); background:var(--accent-soft); color:var(--accent); font-weight:600; }
 .repeat-note { margin: -8rpx 0 24rpx; line-height: 1.55; }
+
+.plan-subtask { padding: 12rpx 0; overflow-wrap: anywhere; }
+.plan-subtask .btn { min-width: 0; }

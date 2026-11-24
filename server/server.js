@@ -8,6 +8,11 @@
 const express = require('express');
 const http = require('http');
 const crypto = require('crypto');
+const path = require('path');
+const { normalizeMoneyData } = require('../miniprogram/utils/amount');
+const { createAvatarStore } = require('./avatar-store');
+const { repaymentDateFor } = require('../miniprogram/utils/money-rules');
+const { billOutstanding } = require('./db/reminder-scan');
 const { WebSocketServer } = require('ws');
 const { loadConfig } = require('./config');
 const { createStore } = require('./db/store');
@@ -125,18 +130,27 @@ function validateStartupConfig(config) {
   ].filter(([, value]) => !value).map(([name]) => name);
   if (required.length) throw new Error('Production configuration missing: ' + required.join(', '));
   if (config.storageDriver && config.storageDriver !== 'mysql') throw new Error('Production configuration requires STORAGE_DRIVER=mysql');
-  if (config.ai && config.ai.enabled && !config.hasDedicatedAiEncryptionKey && !config.aiSecretEncryptionKey) {
+  if (config.ai && (config.ai.enabled || config.ai.trialEnabled) && !config.hasDedicatedAiEncryptionKey && !config.aiSecretEncryptionKey) {
     throw new Error('Production configuration missing: AI_SECRET_ENCRYPTION_KEY');
   }
 }
 
 async function reconcilePlanReminder(store, ownerId, planId, data) {
   const current = await store.getLatestReminderForPlan(ownerId, planId);
-  if (!current || current.status !== 'pending') return;
+  if (!current) return;
   const eligible = getOneOffReminderPlan({ data });
-  const enabled = eligible && eligible.reminder && eligible.reminder.enabled === true;
-  if (!enabled || Number(eligible.reminder.dueAt) !== Number(eligible.dueAt)) {
-    await store.cancelRemindersByPlan(ownerId, planId);
+  const enabled = eligible && eligible.reminder && eligible.reminder.enabled === true &&
+    Number(eligible.reminder.dueAt) === Number(eligible.dueAt);
+  const pause = Boolean(data.done && data.reminder && data.reminder.enabled);
+  if (current.status === 'cancelled' && current.lastError === 'plan_completed') {
+    if (enabled && Number(eligible.dueAt) > Date.now()) {
+      await store.resumeCancelledReminder(ownerId, current.id, 'plan_completed', eligible.title, Number(eligible.dueAt));
+    } else if (!pause) await store.cancelRemindersByPlan(ownerId, planId);
+    return;
+  }
+  if (current.status !== 'pending') return;
+  if (!enabled) {
+    await store.cancelRemindersByPlan(ownerId, planId, pause ? 'plan_completed' : '');
     return;
   }
   if (Number(current.dueAt) !== Number(eligible.dueAt) || current.title !== eligible.title) {
@@ -149,6 +163,14 @@ function createApp(store, config, sockets, services) {
   const options = services || {};
   const aiService = options.aiService || createInsightService({ store, config });
   const loginCodeExchange = options.exchangeLoginCode || exchangeLoginCode;
+  const avatars = options.avatarStore || (config.dataDir && createAvatarStore(config.avatarDir || path.join(config.dataDir, 'avatars')));
+
+  async function loadPublicProfile(owner, profile) {
+    const publicData = publicProfile(profile);
+    if (!avatars) return publicData;
+    const avatar = await avatars.read(owner);
+    return { ...publicData, accountKey: crypto.createHash('sha256').update(owner).digest('hex'), avatarVersion: avatar ? avatar.version : '' };
+  }
 
   app.disable('x-powered-by');
   if (config.trustProxy) app.set('trust proxy', 1);
@@ -240,7 +262,7 @@ function createApp(store, config, sockets, services) {
       await store.createSession(token, openid, Date.now() + config.tokenTtlDays * 24 * 3600 * 1000);
       await store.cleanupSessions();
       phase = 'profile_load';
-      const profile = publicProfile(await store.getProfile(openid));
+      const profile = await loadPublicProfile(openid, await store.getProfile(openid));
       logLogin(req, startedAt, 'success', 'ok', 'complete', 200);
       res.json({ token, openid, devMode: config.devMode, profile });
     } catch (error) {
@@ -251,7 +273,7 @@ function createApp(store, config, sockets, services) {
 
   app.get('/api/profile', auth, async (req, res, next) => {
     try {
-      res.json({ profile: publicProfile(await store.getProfile(req.openid)) });
+      res.json({ profile: await loadPublicProfile(req.openid, await store.getProfile(req.openid)) });
     } catch (error) {
       next(error);
     }
@@ -270,11 +292,36 @@ function createApp(store, config, sockets, services) {
       }
       if (!Object.keys(patch).length) return res.status(422).json({ error: 'empty_profile' });
       const profile = await store.updateProfile(req.openid, patch);
-      res.json({ profile: publicProfile(profile) });
+      res.json({ profile: await loadPublicProfile(req.openid, profile) });
     } catch (error) {
       next(error);
     }
   });
+
+  if (avatars) {
+    const avatarRoute = '/api/profile/avatar';
+    app.get(avatarRoute, auth, async (req, res) => {
+      const avatar = await avatars.read(req.openid);
+      if (!avatar) return res.sendStatus(404);
+      if (req.query.v && req.query.v !== avatar.version) return res.sendStatus(409);
+      res.type('jpeg').send(avatar.bytes);
+    });
+    const avatarWriteLimit = createRateLimiter(12, 60 * 1000, (req) => req.openid);
+    async function saveAvatar(req, res, bytes) {
+      return avatars.run(req.openid, async () => {
+        if (!await store.getSession(req.token)) return res.status(401).json({ error: 'unauthorized' });
+        if (bytes) await avatars.write(req.openid, bytes);
+        else await avatars.remove(req.openid);
+        res.json({ profile: await loadPublicProfile(req.openid, await store.getProfile(req.openid)) });
+      });
+    }
+    app.put(avatarRoute, auth, avatarWriteLimit, async (req, res) => {
+      const bytes = await avatars.normalize(req.body && req.body.image);
+      if (!bytes) return res.status(422).json({ error: 'bad_avatar' });
+      return saveAvatar(req, res, bytes);
+    });
+    app.delete(avatarRoute, auth, avatarWriteLimit, (req, res) => saveAvatar(req, res, null));
+  }
 
   app.delete('/api/account', auth, createRateLimiter(Number(config.accountDeleteRateLimit) || 5, 60 * 60 * 1000), async (req, res, next) => {
     try {
@@ -286,7 +333,12 @@ function createApp(store, config, sockets, services) {
         try { verifiedOpenid = await exchangeLoginCode(config, code); } catch (error) { return res.status(401).json({ error: 'fresh_login_failed' }); }
       }
       if (verifiedOpenid !== req.openid) return res.status(403).json({ error: 'fresh_login_mismatch' });
-      await store.deleteAccount(req.openid);
+      if (avatars) {
+        await avatars.run(req.openid, async () => {
+          await avatars.remove(req.openid);
+          await store.deleteAccount(req.openid);
+        });
+      } else await store.deleteAccount(req.openid);
       res.status(204).end();
     } catch (error) {
       next(error);
@@ -295,6 +347,24 @@ function createApp(store, config, sockets, services) {
 
   app.get('/api/sync', auth, async (req, res, next) => {
     try {
+      /*
+       * v2.12 下载游标：请求带 sinceSeq 时按服务端单调变更序号拉取并回传 cursor
+       * （本机写入不推进该游标，晚到上传的旧时间戳记录不会漏拉）；
+       * 旧客户端只带 since 时保持 legacy 行为，协议向后兼容。
+       */
+      if (req.query.sinceSeq !== undefined && typeof store.getChangesBySeq === 'function') {
+        const value = Number(req.query.sinceSeq);
+        const sinceSeq = Number.isSafeInteger(value) && value >= 0 ? value : 0;
+        const generation = config.syncGeneration || '1';
+        const clientGeneration = req.query.generation;
+        const changedGeneration = clientGeneration !== undefined && clientGeneration !== generation &&
+          (sinceSeq > 0 || Boolean(clientGeneration));
+        const result = await store.getChangesBySeq(req.openid, changedGeneration ? 0 : sinceSeq);
+        return res.json({
+          serverTime: Date.now(), cursor: result.cursor, changes: result.changes, generation,
+          ...(changedGeneration || result.reset ? { reset: true } : {})
+        });
+      }
       const since = Math.max(0, Number(req.query.since) || 0);
       res.json({ serverTime: Date.now(), changes: await store.getChanges(req.openid, since) });
     } catch (error) {
@@ -308,7 +378,8 @@ function createApp(store, config, sockets, services) {
       if (!['today', 'month'].includes(scope)) return res.status(400).json({ error: 'bad_insight_scope' });
       const period = scope === 'today' ? formatDate(new Date()) : String(req.query.month || formatMonth(new Date()));
       if (scope === 'month' && (!validMonth(period) || period > formatMonth(new Date()))) return res.status(400).json({ error: 'bad_insight_month' });
-      const result = await aiService.getInsight(req.openid, scope, period, new Date());
+      const isTrial = req.query.channel === 'trial';
+      const result = await aiService.getInsight(req.openid, scope, period, new Date(), isTrial);
       res.json({ scope, period, content: result.content, source: result.source, generatedAt: result.generatedAt });
     } catch (error) {
       next(error);
@@ -362,6 +433,43 @@ function createApp(store, config, sockets, services) {
     }
   });
 
+  function offsetFor(req) {
+    const offset = Number(req.query.offset || 0);
+    return Number.isSafeInteger(offset) && offset >= 0 && offset <= 100000 ? offset : null;
+  }
+
+  app.get('/api/reminders', auth, async (req, res) => {
+    const offset = offsetFor(req);
+    if (offset === null) return res.status(400).json({ error: 'bad_offset' });
+    const rows = await store.listReminders(req.openid, req.query.view !== 'history', offset);
+    const items = rows.slice(0, 20).map(({ id, title, planId, status, dueAt, updatedAt }) => ({
+      id, title, planId, status, dueAt: Number(dueAt), updatedAt: Number(updatedAt),
+      kind: planId.startsWith('habit:') ? 'habit' : planId.startsWith('bill:') ? 'bill' : 'plan'
+    }));
+    res.json({ items, next: rows.length > 20 ? offset + 20 : null });
+  });
+
+  const restoreWindow = 30 * 24 * 60 * 60 * 1000;
+  app.get('/api/memories/deleted', auth, async (req, res) => {
+    const offset = offsetFor(req);
+    if (offset === null) return res.status(400).json({ error: 'bad_offset' });
+    const rows = await store.listDeletedMemories(req.openid, Date.now() - restoreWindow, offset);
+    const items = rows.slice(0, 20).filter((row) => !validateRecordData('memories', row.data))
+      .map(({ id, data, deletedAt }) => ({ id, data, deletedAt }));
+    res.json({ items, next: rows.length > 20 ? offset + 20 : null });
+  });
+  app.post('/api/memories/:id/restore', auth, validateRecordId, async (req, res) => {
+    const now = Date.now();
+    const deletedAt = Number(req.body && req.body.deletedAt);
+    if (!Number.isSafeInteger(deletedAt) || deletedAt <= 0) return res.status(422).json({ error: 'bad_deleted_at' });
+    const result = await store.upsert(req.openid, 'memories', req.params.id, null, now, {
+      restore: { deletedAt, cutoff: now - restoreWindow }
+    });
+    if (!result.applied) return res.status(409).json({ error: 'restore_conflict' });
+    broadcast(sockets, req.openid, { type: 'change', collection: 'memories', id: req.params.id, ts: now });
+    res.json(result);
+  });
+
   app.get('/api/reminders/:planId', auth, validateRecordId, async (req, res, next) => {
     try {
       const reminder = await store.getLatestReminderForPlan(req.openid, req.params.planId);
@@ -404,18 +512,29 @@ function createApp(store, config, sockets, services) {
   app.put('/api/records/:collection/:id', auth, createRateLimiter(Number(config.recordWriteRateLimit) || 120, 60 * 1000, (req) => req.openid), validateCollection, validateRecordId, async (req, res, next) => {
     try {
       const body = req.body || {};
-      const validationError = validateRecordData(req.params.collection, body.data);
+      const skip = req.params.collection === 'money' && /^cycle-/.test(req.params.id) && body.createOnly === true &&
+        body.data && body.data.skipped === true && Object.keys(body.data).length === 1;
+      const data = skip ? {} : normalizeMoneyData(req.params.collection, body.data);
+      const validationError = skip ? '' : validateRecordData(req.params.collection, data);
       if (validationError) return res.status(422).json({ error: validationError });
       const updatedAt = parseUpdatedAt(body.updatedAt);
-      // createOnly：导入恢复专用语义 —— 云端已存在（存活或墓碑）时保留云端状态，仅不存在时创建
-      const result = await store.upsert(req.openid, req.params.collection, req.params.id, body.data, updatedAt, { createOnly: body.createOnly === true });
+      const repaymentDate = req.params.collection === 'money' && body.data.type === 'transfer'
+        ? repaymentDateFor(req.params.id, body.data.toAccountId) : '';
+      const replacesDeletedAt = body.replacesDeletedAt;
+      if (replacesDeletedAt !== undefined && (!repaymentDate || body.createOnly !== true ||
+          !Number.isSafeInteger(replacesDeletedAt) || replacesDeletedAt <= 0)) {
+        return res.status(422).json({ error: 'bad_repayment_revision' });
+      }
+      const result = await store.upsert(req.openid, req.params.collection, req.params.id, data, updatedAt, {
+        createOnly: body.createOnly === true, tombstone: skip, replacesDeletedAt
+      });
+      if (result.applied && repaymentDate && !(await billOutstanding(store, req.openid, body.data.toAccountId, repaymentDate))) {
+        await store.cancelRemindersByPlan(req.openid, 'bill:' + body.data.toAccountId + ':' + repaymentDate, 'bill_settled');
+      }
       if (result.applied && req.params.collection === 'plan') {
         await reconcilePlanReminder(store, req.openid, req.params.id, body.data);
       }
-      if (result.applied && req.params.collection === 'settings' && req.params.id === 'app' && body.data.aiConsent !== true && typeof store.deleteAiInsights === 'function') {
-        await store.deleteAiInsights(req.openid);
-      }
-      if (result.applied) broadcast(sockets, {
+      if (result.applied) broadcast(sockets, req.openid, {
         type: 'change', collection: req.params.collection, id: req.params.id, ts: Date.now()
       });
       res.json(result);
@@ -430,7 +549,7 @@ function createApp(store, config, sockets, services) {
       const body = req.body || {};
       const result = await store.remove(req.openid, req.params.collection, req.params.id, updatedAt, body.data);
       if (result.applied && req.params.collection === 'plan') await store.cancelRemindersByPlan(req.openid, req.params.id);
-      if (result.applied) broadcast(sockets, {
+      if (result.applied) broadcast(sockets, req.openid, {
         type: 'change', collection: req.params.collection, id: req.params.id, ts: Date.now()
       });
       res.json(result);
@@ -457,10 +576,10 @@ function createApp(store, config, sockets, services) {
   return app;
 }
 
-function broadcast(sockets, payload) {
+function broadcast(sockets, owner, payload) {
   const message = JSON.stringify(payload);
   for (const ws of sockets) {
-    if (ws.readyState === 1) {
+    if (ws.owner === owner && ws.readyState === 1) {
       try { ws.send(message); } catch (error) { /* socket will be removed on close */ }
     }
   }
@@ -495,6 +614,7 @@ async function start() {
     store.getSession(token).then((session) => {
       clearTimeout(authTimeout);
       if (!session) return ws.close(4401, 'unauthorized');
+      ws.owner = session.openid;
       sockets.add(ws);
       ws.isAlive = true;
       ws.on('message', () => ws.close(1008, 'read-only socket'));

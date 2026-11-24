@@ -54,18 +54,25 @@ Page({
 
   onLoad(options) {
     theme.applyToPage(this);
-    this.unsub = store.subscribe(() => this.render());
+    this.unsub = ui.bindStore(this, ['media', '__sync__'],
+      () => this.render(),
+      () => this.renderSyncState());
     this.render();
     this.setData({ today: sync.fmtDate(new Date()) });
     /* 搜索页深链：直接打开对应收藏的编辑弹层 */
     if (options && options.id) this.openEditById(options.id);
   },
-  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); },
+  onShow() { this.__pageHidden = false; theme.applyToPage(this); share.enableShareMenu(); this.render(); },
   onShareAppMessage: share.onShareAppMessage('media'),
   onShareTimeline: share.onShareTimeline('media'),
+  onHide() { this.__pageHidden = true; },
   onUnload() {
     this.unsub && this.unsub();
     clearTimeout(this.__undoTimer);
+  },
+  /* 同步状态变化只更新状态横幅，不做整页重算（性能方案 §5） */
+  renderSyncState() {
+    ui.diffSetData(this, { offline: store.state.syncState === 'offline' });
   },
   retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() {

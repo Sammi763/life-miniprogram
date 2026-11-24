@@ -4,6 +4,7 @@
  * 登录页自检按钮的行为（成功、失败、进行中不重复探测、登录失败不自动探测）。
  */
 const assert = require('assert');
+const { BUILD_VERSION } = require('../miniprogram/config/build');
 const fs = require('fs');
 const path = require('path');
 
@@ -51,7 +52,8 @@ async function main() {
   assert.strictEqual(requests[0].method, 'GET');
   assert.strictEqual(requests[0].timeout, 6000, '自检必须在 6 秒内结束，不占用登录的 10 秒预算');
   assert.strictEqual(requests[0].header.Authorization, undefined, '自检不得携带登录令牌');
-  assert.match(requests[0].header['X-Client-Build'], /^\d{8}\.\d+$/, '自检应带上构建版本便于对日志');
+  assert.match(BUILD_VERSION, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/, '发布版本应采用语义化版本号');
+  assert.strictEqual(requests[0].header['X-Client-Build'], BUILD_VERSION, '自检应带上构建版本便于对日志');
   assert.deepStrictEqual(storageWrites, [], '自检不得写入本地存储');
 
   // 2. 传输失败分类：符号名优先，数字码兜底
@@ -99,7 +101,7 @@ async function main() {
     assert.match(loginWxml, /网络自检/);
     assert.match(loginWxml, /\{\{buildVersion\}\}/, '失败态应展示构建版本便于报障');
     assert.match(loginWxss, /\.diagnose-btn/, '自检按钮需要样式');
-    assert.match(pageDefinition.data.buildVersion, /^\d{8}\.\d+$/);
+    assert.strictEqual(pageDefinition.data.buildVersion, BUILD_VERSION);
 
     api.checkHealth = () => Promise.resolve({ statusCode: 200, ok: true });
     page.onDiagnose.call(page);

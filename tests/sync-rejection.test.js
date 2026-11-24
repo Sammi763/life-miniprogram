@@ -132,6 +132,15 @@ function stubPut(handler) {
   store.loadLocal();
   assert.strictEqual(store.state.rejectedWrites.length, 1, '被拒写入应随本机缓存一起恢复，重启后仍然可见');
 
+  const oldData = { type: 'expense', amount: 1.005, date: '2026-11-02', category: '餐饮' };
+  store.applyLocalUpsert('money', { id: 'legacy-precision', data: oldData, updatedAt: 888 });
+  store.enqueue({ type: 'put', collection: 'money', id: 'legacy-precision', data: oldData, updatedAt: 888 });
+  api.apiPut = (collection, id, data, updatedAt) => Promise.resolve({ applied: true, record: { id, data, updatedAt } });
+  await sync.flush();
+  assert.strictEqual(store.state.records.money['legacy-precision'].data.amount, 1.01);
+  assert.strictEqual(oldData.amount, 1.005);
+  assert.strictEqual(store.state.queue.length, 0);
+
   sync.destroy();
   console.log('sync-rejection.test.js  OK（4xx 丢弃队首不死循环 / 传输失败仍重试 / 401·408·429 例外 / 手动重试换时间戳 / 跨重启可见）');
   process.exit(0);

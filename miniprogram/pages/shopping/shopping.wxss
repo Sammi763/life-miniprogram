@@ -16,3 +16,14 @@
 .shopping-main { flex: 1; min-width: 0; }
 .shopping-name { font-size: 30rpx; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .link-action { color: var(--terra); font-size: 22rpx; padding: 12rpx 0 12rpx 16rpx; }
+
+/* 已买分批追加入口（性能方案 §5） */
+.done-more { text-align: center; color: var(--ink-2); font-size: 24rpx; padding: 24rpx 0; }
+
+/* U13 完成并记账弹层：金额输入与分类 chips（复用全局 sheet/chip，金额样式页内补齐） */
+.amount-input-wrap { display: flex; align-items: center; gap: 8rpx; border-bottom: 1rpx solid var(--line); padding: 10rpx 4rpx; }
+.amount-cny { color: var(--ink-2); font-size: 32rpx; }
+.amount-input { flex: 1; font-size: 40rpx; }
+
+.shopping-done-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 12rpx; margin-top: 16rpx; }
+.shopping-action { min-height: 72rpx; padding: 12rpx 20rpx; margin: 0; font-size: 24rpx; }

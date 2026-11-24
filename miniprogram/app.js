@@ -58,6 +58,8 @@ App({
     console.error('[life-issue] ' + JSON.stringify(issue));
   },
   onHide() {
-    // 设置记录会在下一次 store 通知时更新；此处不做网络或存储写入。
+    // 切后台立即落盘：250ms 防抖内的最后一次变更如果等不到回调（进程被杀）就丢了（R06）。
+    // 只做本地同步写，不发起网络请求。
+    store.persistNow();
   }
 });

@@ -2,7 +2,8 @@
  *
  * 格式：
  *   { format: 'life-backup', version: 1, exportedAt: <ISO>, source: 'cloud'|'local',
- *     records: { <collection>: [ { id, data, updatedAt, deletedAt? }, ... ] } }
+ *     records: { <collection>: [ { id, data, updatedAt, deletedAt? }, ... ] },
+ *     localWrites?: { pending: [...], rejected: [...] } }
  *
  * 兼容：
  *   - 旧云端导出（{exportedAt, records:{coll:{id:{data,updatedAt,deletedAt}}}} 的 map 形态，
@@ -28,6 +29,8 @@
 
 const store = require('./store');
 const sync = require('./sync');
+const { normalizeMoneyData } = require('./amount');
+const { monthlyMoneyDifferences } = require('./money-audit');
 const { ID_PATTERN, validateRecordData } = require('./record-validation');
 
 const BACKUP_FORMAT = 'life-backup';
@@ -54,14 +57,18 @@ function recordsToArray(recordsMap) {
   return output;
 }
 
-/* 本机备份：全量含墓碑（无损），带记录 ID */
+/* 本机备份保留记录快照，以及可能与快照不同的本机待写和被拒改动。 */
 function buildLocalBackup() {
+  const { records, queue, rejectedWrites } = store.state;
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     source: 'local',
-    records: recordsToArray(store.state.records)
+    records: recordsToArray(records),
+    ...(queue.length || rejectedWrites.length
+      ? { localWrites: { pending: queue.slice(), rejected: rejectedWrites.slice() } }
+      : {})
   };
 }
 
@@ -112,7 +119,7 @@ function parseBackup(text) {
   // v1 格式
   if (parsed.format === BACKUP_FORMAT) {
     if (Number(parsed.version) !== BACKUP_VERSION) return { error: 'bad_version', message: '暂不支持的备份版本（v' + parsed.version + '）' };
-    return fromRecordArrays(parsed.records, parsed.exportedAt, parsed.source);
+    return fromRecordArrays(parsed.records, parsed.exportedAt, parsed.source, parsed.localWrites);
   }
   // 旧云端导出（map 形态、含 ID）
   if (parsed.records && typeof parsed.records === 'object' && !Array.isArray(parsed.records)) {
@@ -131,7 +138,7 @@ function parseBackup(text) {
   return { error: 'bad_shape', message: '不是可识别的备份格式' };
 }
 
-function fromRecordArrays(records, exportedAt, source) {
+function fromRecordArrays(records, exportedAt, source, localWrites) {
   if (!records || typeof records !== 'object') return { error: 'bad_shape', message: '备份缺少 records 字段' };
   let total = 0;
   const normalized = {};
@@ -144,13 +151,17 @@ function fromRecordArrays(records, exportedAt, source) {
   if (total > MAX_IMPORT_RECORDS) {
     return { error: 'too_many', message: '备份含 ' + total + ' 条记录，超过本机 ' + MAX_IMPORT_RECORDS + ' 条容量边界，无法完整恢复' };
   }
-  return { backup: { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: exportedAt || '', source: source || '', records: normalized }, total, unknownCollections: unknown };
+  const backup = { format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: exportedAt || '', source: source || '', records: normalized };
+  if (source === 'local' && localWrites && Array.isArray(localWrites.pending) && Array.isArray(localWrites.rejected)) {
+    backup.localWrites = { pending: localWrites.pending, rejected: localWrites.rejected };
+  }
+  return { backup, total, unknownCollections: unknown };
 }
 
 /* ---------- 导入：门槛与预览 ---------- */
 
 function importBlockedReason() {
-  if (store.state.queue.length) return '还有 ' + store.state.queue.length + ' 条改动没同步完，等「我的」页显示已同步后再导入';
+  if (store.state.queue.length) return '还有 ' + store.state.queue.length + ' 条改动正在等待保存到账号，请稍后再导入';
   if (store.state.syncState === 'offline') return '当前离线，请联网后再导入';
   return '';
 }
@@ -158,7 +169,10 @@ function importBlockedReason() {
 /* 与产品口径一致的导入前清洗：AI 同意重置、提醒授权剥离 */
 function sanitizeImportData(collection, data) {
   const cleaned = { ...(data && typeof data === 'object' ? data : {}) };
-  if (collection === 'settings') cleaned.aiConsent = false;
+  if (collection === 'settings') {
+    cleaned.aiConsent = false;
+    delete cleaned.trialAiConsent;
+  }
   if (collection === 'plan') delete cleaned.reminder;
   return cleaned;
 }
@@ -166,8 +180,9 @@ function sanitizeImportData(collection, data) {
 function previewImport(backup) {
   const result = {
     total: 0, create: 0, skipLive: 0, skipDeleted: 0, skipBackupDeleted: 0,
-    invalid: [], byCollection: {}, creates: []
+    invalid: [], byCollection: {}, creates: [], roundedMoneyRecords: 0
   };
+  const importedMoney = [];
   for (const collection of store.COLLECTIONS) {
     const existing = store.state.records[collection] || {};
     const stats = { create: 0, skipLive: 0, skipDeleted: 0, skipBackupDeleted: 0, invalid: 0 };
@@ -180,13 +195,16 @@ function previewImport(backup) {
       if (typeof id !== 'string' || !ID_PATTERN.test(id)) { stats.invalid++; if (result.invalid.length < 5) result.invalid.push(collection + '/' + String(id) + ' 记录 ID 不合法'); continue; }
       /* 备份自带 deletedAt = 已删除数据：跳过且绝不复活 */
       if (entry.deletedAt) { stats.skipBackupDeleted++; continue; }
-      const data = sanitizeImportData(collection, entry.data);
+      const original = sanitizeImportData(collection, entry.data);
+      const data = normalizeMoneyData(collection, original);
       const reason = validateRecordData(collection, data);
       if (reason) { stats.invalid++; if (result.invalid.length < 5) result.invalid.push(collection + '/' + id + ' 字段校验未通过'); continue; }
       const local = existing[id];
       if (local && !local.deletedAt) { stats.skipLive++; continue; }
       if (local && local.deletedAt) { stats.skipDeleted++; continue; }
       stats.create++;
+      if (data !== original) result.roundedMoneyRecords++;
+      if (collection === 'money') importedMoney.push({ data: original });
       result.creates.push({ collection, id, data });
     }
     if (stats.create || stats.skipLive || stats.skipDeleted || stats.skipBackupDeleted || stats.invalid) {
@@ -198,6 +216,8 @@ function previewImport(backup) {
     result.skipBackupDeleted += stats.skipBackupDeleted;
     result.invalidCount = (result.invalidCount || 0) + stats.invalid;
   }
+  result.moneyDifferences = monthlyMoneyDifferences(importedMoney).filter((row) =>
+    [row.income, row.expense, row.transfer, row.balance].some((amount) => amount.differenceCents));
   /* 动态容量预检：当前本机缓存 + 本次新建记录的估算体积不得超过本机容量边界 */
   const estimatedChars = JSON.stringify(result.creates).length;
   const currentChars = store.localCacheChars();

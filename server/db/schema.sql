@@ -5,11 +5,24 @@ CREATE TABLE IF NOT EXISTS records (
   data JSON NOT NULL,
   updated_at BIGINT UNSIGNED NOT NULL,
   deleted_at BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  -- v2.12 单调变更序号：每次成功写入 +1（owner 内），作为下载游标（客户端 sinceSeq）。
+  -- 与客户端业务时间戳（updated_at）分离：晚到上传的旧时间戳不会漏拉、本机写入不推进游标。
+  seq BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  seq_fingerprint BINARY(32) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   modified_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (owner_id, collection, record_id),
   INDEX idx_records_owner_updated (owner_id, updated_at),
-  INDEX idx_records_owner_collection (owner_id, collection)
+  INDEX idx_records_owner_collection (owner_id, collection),
+  INDEX idx_records_owner_seq (owner_id, seq)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- v2.12 每 owner 变更序号头：事务内以 LAST_INSERT_ID(seq+1) 原子自增，多设备并发安全
+CREATE TABLE IF NOT EXISTS owner_seq (
+  owner_id VARCHAR(191) NOT NULL,
+  seq BIGINT UNSIGNED NOT NULL DEFAULT 0,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (owner_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS sessions (

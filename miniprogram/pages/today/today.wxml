@@ -1,55 +1,79 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，改动已暂存本机</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
+<view wx:if="{{saveIssue}}" class="banner"><text>部分记录保存异常</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openSaveHelp">查看</view></view>
+<view wx:elif="{{offline}}" class="banner"><text>{{hasPendingSave ? '有改动尚未保存到账号，联网后会自动重试' : '网络连接异常'}}</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
 
 <view class="today-hero">
-  <view class="today-hero-meta"><view><view class="hero-kicker">MY DAILY RHYTHM</view><view class="hero-date">{{dateText}}</view></view><view class="hero-status">{{syncing ? '同步中…' : (offline ? '离线模式' : '已同步')}}</view></view>
-  <view class="today-hero-score"><view class="hero-score-copy"><view class="hero-score-label">今日生活指数</view><view class="hero-message">{{lifeMessage}}</view></view><view class="hero-score">{{lifeIndex}}<text>/100</text></view></view>
-  <view wx:if="{{firstRun}}" class="hero-first">
-    <view class="hero-first-title">三步开始记录生活</view>
-    <view class="hero-first-steps">
-      <view class="hero-step tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goMoney"><text class="hero-step-num">1</text><view><view class="hero-step-name">记一笔</view><view class="sub">今天花了什么、收了什么</view></view></view>
-      <view class="hero-step tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goHabit"><text class="hero-step-num">2</text><view><view class="hero-step-name">建习惯</view><view class="sub">每天想做的一件小事</view></view></view>
-      <view class="hero-step tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goPlan"><text class="hero-step-num">3</text><view><view class="hero-step-name">排日程</view><view class="sub">待办、提醒与重复安排</view></view></view>
-    </view>
-  </view>
-  <view wx:elif="{{focusTask}}" class="hero-focus tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="onQueueTap" data-id="{{focusTask.id}}" data-kind="{{focusTask.kind}}"><view><view class="hero-focus-label">先做这一件</view><view class="hero-focus-title">{{focusTask.title}}</view><view class="hero-focus-sub">{{focusTask.kindText}} · {{focusTask.subtitle}}</view></view><view class="hero-focus-action">{{focusTask.actionText}}</view></view>
-  <view wx:else class="hero-empty tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goMemory">今天没有待处理 · 留下一段记忆 →</view>
+  <view class="hero-date">{{dateText}}</view>
+  <view wx:if="{{queueCount}}" class="hero-queue tap-row" bindtap="goQueue" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">今天还有 {{queueCount}} 项待处理 ›</view>
+  <view wx:if="{{focusTask}}" class="hero-focus tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="onQueueDetail" data-id="{{focusTask.id}}" data-kind="{{focusTask.kind}}"><view><view class="hero-focus-label">先做这一件</view><view class="hero-focus-title">{{focusTask.title}}</view><view class="hero-focus-sub">{{focusTask.kindText}} · {{focusTask.subtitle}}</view></view><view class="hero-focus-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" catchtap="onQueueComplete" data-id="{{focusTask.id}}" data-kind="{{focusTask.kind}}">{{focusTask.actionText}}</view></view>
 </view>
 
-<view class="card today-memory-entry record-card" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goMemory"><view><view class="today-memory-title">写下此刻</view><view class="sub">{{memoryCount ? '今天已经留下 ' + memoryCount + ' 条记忆' : '今天有什么值得留下？'}}</view></view><view class="today-memory-plus">＋</view></view>
+<view wx:if="{{runningFocus}}" class="card today-memory-entry record-card" bindtap="resumeFocus" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90">
+  <view class="today-memory-title">{{runningFocus.title}}</view>
+  <view class="more">{{runningFocus.action}} ›</view>
+</view>
 
+<view wx:if="{{pastMemory}}" class="card" bindtap="openPastMemory" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90">
+  <view class="card-title">往年今日 <text class="sub">{{pastMemory.date}}</text></view>
+  <view>{{pastMemory.content}}</view>
+</view>
+
+<view class="card today-memory-entry record-card" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goMemory"><view><view class="today-memory-title"><text wx:if="{{firstRun}}">写下第一条随记</text><text wx:else>写下此刻</text></view><view class="sub">{{memoryCount ? '今天已经留下 ' + memoryCount + ' 条记忆' : '今天有什么值得留下？'}}</view></view><view class="today-memory-plus">＋</view></view>
+
+<!-- 快捷入口直达新增，生活工具打开各模块列表 -->
 <view class="card quick-card">
-  <view class="card-title"><text>快速开始</text><text class="sub">记下一件小事</text></view>
+  <view class="card-title">
+    <text>快速开始</text>
+    <button class="more life-tools-trigger" bindtap="openToolsSheet" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">生活工具 ›</button>
+  </view>
   <view class="quick-grid">
     <view class="quick-item tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goMoney"><text class="quick-icon">¥</text><text>记一笔</text><text class="sub">支出或收入</text><text class="quick-plus">＋</text></view>
     <view class="quick-item tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goPlan"><text class="quick-icon">□</text><text>排日程</text><text class="sub">待办与提醒</text><text class="quick-plus">＋</text></view>
     <view class="quick-item tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goFitness"><text class="quick-icon">⌁</text><text>记体重</text><text class="sub">减脂趋势</text><text class="quick-plus">＋</text></view>
     <view class="quick-item tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goShopping"><text class="quick-icon">○</text><text>待买物品</text><text class="sub">采购清单</text><text class="quick-plus">＋</text></view>
   </view>
+  <button wx:if="{{firstRun}}" class="btn btn-ghost quick-habit" bindtap="goHabit" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">＋ 建习惯</button>
 </view>
 
-<view class="card money-card record-card" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goMoney">
-  <view class="card-title"><text>今日收支</text><text class="more">记账 ›</text></view>
+<!-- 今日待处理上移到收支之前：先处理当前的事，再看数字（U02） -->
+<view id="today-queue" class="card"><view class="card-title"><text>今日待处理</text><view class="title-side"><text wx:if="{{overdueCount}}" class="overdue-badge">{{overdueCount}} 项已逾期</text><view class="more" bindtap="goPlanList" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">日程统筹 ›</view></view></view><view wx:if="{{todayQueue.length === 0}}" class="empty">今天没有待处理事项，去写下一点生活吧。</view><view wx:for="{{todayQueue}}" wx:key="key" class="today-queue-row"><view class="queue-main tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="onQueueDetail" data-id="{{item.id}}" data-kind="{{item.kind}}"><view class="queue-kind {{item.pinned ? 'queue-kind-on' : ''}}">{{item.kindText}}</view><view class="queue-copy"><view>{{item.title}}</view><view class="sub">{{item.subtitle}}<text wx:if="{{item.overdue}}" class="queue-overdue"> · 已逾期</text></view></view></view><view class="queue-done tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" catchtap="onQueueComplete" data-id="{{item.id}}" data-kind="{{item.kind}}">{{item.actionText}}</view><view class="queue-pin" catchtap="onQueuePin" data-id="{{item.id}}" data-kind="{{item.kind}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.pinText}}</view></view>
+  <button wx:if="{{queueCount > 8}}" class="btn btn-ghost queue-expand" bindtap="toggleQueue" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{queueExpanded ? '收起待处理' : '查看全部 ' + queueCount + ' 项'}}</button>
+</view>
+
+<!-- 今日收支 + 本月支出合并为一张卡，预算入口直达记账页预算编辑器（U02/U05） -->
+<view class="card money-card">
+  <view class="card-title"><text>今日收支</text><view class="more" bindtap="goLedger" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">记账 ›</view></view>
   <view class="money-row">
     <view class="money-cell"><view class="sub">收入</view><view class="money-num money-in">+¥{{todayIn}}</view></view>
     <view class="money-cell"><view class="sub">支出</view><view class="money-num money-out">-¥{{todayOut}}</view></view>
+    <view class="money-cell"><view class="sub">本月支出</view><view class="money-num">¥{{monthOut}}</view></view>
   </view>
+  <view wx:if="{{budget > 0}}" class="budget-tap tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goBudget"><view class="sub">还可安排 ¥{{budget > monthOut ? budget - monthOut : 0}}</view><text class="budget-tap-hint">预算设置 ›</text></view>
+  <view class="bar" wx:if="{{budget > 0}}"><view class="bar-fill {{budgetPct >= 90 ? 'bar-hot' : ''}}" style="width: {{budgetPct}}%"></view></view>
 </view>
 
-<view wx:if="{{billAlerts.length}}" class="card today-bills"><view class="card-title"><text>临近还款</text><view class="more" bindtap="goMoney" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">规划账本 ›</view></view><view wx:for="{{billAlerts}}" wx:key="id" class="today-bill-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goMoney"><view><view>{{item.name}}</view><view class="sub">{{item.dueDate}} · {{item.daysLeft === 0 ? '今天到期' : item.daysLeft + ' 天后到期'}}</view></view><text class="money-out">¥{{item.currentBill}}</text></view></view>
+<view wx:if="{{billAlerts.length}}" class="card today-bills"><view class="card-title"><text>临近还款</text><view class="more" bindtap="goAccounts" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">规划账本 ›</view></view><view wx:for="{{billAlerts}}" wx:key="id" class="today-bill-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goAccounts" data-id="{{item.id}}"><view><view>{{item.name}}</view><view class="sub">{{item.dueDate}} · {{item.daysLeft === 0 ? '今天到期' : item.daysLeft + ' 天后到期'}}</view></view><text class="money-out">¥{{item.remainingBill}}</text></view></view>
 
-<view class="card"><view class="card-title"><text>本月支出</text><view class="more" bindtap="goReport" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">月度报告 ›</view></view><view class="budget-big">¥{{monthOut}}</view><view wx:if="{{budget > 0}}" class="budget-tap tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goMine"><view class="sub">还可安排 ¥{{budget > monthOut ? budget - monthOut : 0}}</view><text class="budget-tap-hint">预算设置 ›</text></view><view class="bar" wx:if="{{budget > 0}}"><view class="bar-fill {{budgetPct >= 90 ? 'bar-hot' : ''}}" style="width: {{budgetPct}}%"></view></view></view>
-
-<view wx:if="{{budgetAdvice}}" class="card budget-advice tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goMine">
+<view wx:if="{{budgetAdvice}}" class="card budget-advice tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="goBudget">
   <view>待买预估 ¥{{budgetAdvice.pendingEstimate}} ＋ 本月支出 ¥{{budgetAdvice.monthOut}}，已超预算 ¥{{budgetAdvice.budget}}</view>
   <view class="sub">超出 ¥{{budgetAdvice.over}} · 点此查看与调整预算（不会自动修改） ›</view>
 </view>
 
-<view class="card"><view class="card-title"><text>今日待处理</text><view class="title-side"><text wx:if="{{overdueCount}}" class="overdue-badge">{{overdueCount}} 项已逾期</text><view class="more" bindtap="goPlan" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">日程统筹 ›</view></view></view><view wx:if="{{todayQueue.length === 0}}" class="empty">今天没有待处理事项，去写下一点生活吧。</view><view wx:for="{{todayQueue}}" wx:key="key" class="today-queue-row {{finishingKey === item.kind + ':' + item.id ? 'queue-finishing' : ''}}"><view class="queue-main tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="onQueueTap" data-id="{{item.id}}" data-kind="{{item.kind}}"><view class="queue-kind {{item.pinned ? 'queue-kind-on' : ''}}">{{item.kindText}}</view><view class="queue-copy"><view>{{item.title}}</view><view class="sub">{{item.subtitle}}<text wx:if="{{item.overdue}}" class="queue-overdue"> · 已逾期</text></view></view><view class="queue-action">{{item.actionText}}</view></view><view class="queue-pin" catchtap="onQueuePin" data-id="{{item.id}}" data-kind="{{item.kind}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.pinText}}</view></view></view>
-
 <view class="card"><view class="card-title"><text>最近记录</text><view class="more" bindtap="goSearch" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">统一搜索 ›</view></view><view wx:if="{{recentRecords.length === 0}}" class="empty">还没有最近记录</view><view wx:for="{{recentRecords}}" wx:key="id" class="recent-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="onRecentTap" data-id="{{item.id}}" data-kind="{{item.kind}}" data-nav-id="{{item.navId}}"><view class="recent-main"><view>{{item.title}}</view><view class="sub">{{item.sub}}</view></view><text class="{{item.amountClass}}">{{item.amount}}</text></view></view>
 
-<view class="card reminder-card"><view class="card-title"><text>轻提醒</text><text class="ai-label">{{aiInsightLoading ? '整理中…' : aiInsightLabel}}</text></view><view class="quote">{{aiInsight}}</view><view class="sub">{{aiConsent ? '仅用于你的生活空间，可在「我的」关闭 AI' : '本机根据当前记录整理，可在「我的」开启 AI 文案'}}</view></view>
+<view class="card reminder-card"><view class="card-title"><text>轻提醒</text><text class="ai-label">{{aiInsightLoading ? '整理中…' : aiInsightLabel}}</text></view><view class="quote">{{aiInsight}}</view><view class="sub">{{aiConsent ? '仅用于你的生活空间' : '本机根据当前记录整理'}}</view></view>
+
+<view wx:if="{{toolsSheetShow}}" class="mask" bindtap="closeToolsSheet"></view>
+<view wx:if="{{toolsSheetShow}}" class="sheet" catchtap="noop">
+  <view class="sheet-title">生活工具</view>
+  <view class="life-tools-grid">
+    <button wx:for="{{lifeTools}}" wx:key="url" class="life-tool" bindtap="openLifeTool" data-url="{{item.url}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
+      <text class="life-tool-glyph" aria-hidden="true">{{item.glyph}}</text>
+      <view class="life-tool-copy"><view>{{item.title}}</view><view class="sub">{{item.detail}}</view></view>
+    </button>
+  </view>
+  <button class="btn btn-ghost life-tools-close" bindtap="closeToolsSheet" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">关闭</button>
+</view>
 
 <view wx:if="{{valueSheetShow}}" class="mask" bindtap="closeValueSheet"></view>
 <view wx:if="{{valueSheetShow}}" class="sheet" catchtap="noop">
@@ -66,6 +90,8 @@
   </view>
   <button class="btn btn-primary" bindtap="saveValue" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">保存</button>
 </view>
+
+<undo-bar show="{{undoShow}}" text="{{undoText}}" bind:undo="onUndoTap" />
 
 <view class="tabbar-spacer"></view>
 </view>

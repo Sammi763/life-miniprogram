@@ -42,12 +42,12 @@ async function main() {
   assert.strictEqual(okResult, true);
   assert.deepStrictEqual(events[0], ['showLoading', '正在重试', true], '重试必须带遮罩的加载态');
   assert.deepStrictEqual(events[1], ['hideLoading'], '先关闭加载态');
-  assert.deepStrictEqual(events[2], ['showToast', '已同步', 'success'], '成功给明确反馈');
+  assert.deepStrictEqual(events[2], ['showToast', '连接已恢复', 'success'], '成功给明确反馈');
 
   events.length = 0;
   const offResult = await ui.retryWithFeedback(() => Promise.resolve(false));
   assert.strictEqual(offResult, false, 'sync.pull() 返回 false 表示仍离线');
-  assert.deepStrictEqual(events[2], ['showToast', '仍无法连接，改动已暂存本机', 'none'], '离线必须给出说明而不是静默');
+  assert.deepStrictEqual(events[2], ['showToast', '仍无法连接，请稍后重试', 'none'], '离线必须给出说明而不是静默');
 
   events.length = 0;
   const throwResult = await ui.retryWithFeedback(() => { throw new Error('boom'); });
@@ -88,7 +88,9 @@ async function main() {
       assert.match(wxml, /class="fab"[^>]*hover-class="fab-pressed"/, `${name} 的悬浮按钮应有按压反馈`);
     }
   }
-  assert.ok(fabPages.length >= 5, `悬浮按钮应覆盖各记录页，实际 ${fabPages.length} 个`);
+  for (const name of ['habit', 'media', 'plan', 'shopping']) {
+    assert.ok(fabPages.includes(name), `${name} 应保留悬浮新增按钮`);
+  }
 
   const appWxss = read('miniprogram/app.wxss');
   assert.match(appWxss, /\.tap-pressed\s*\{/, '缺少通用按压反馈样式');
@@ -99,16 +101,15 @@ async function main() {
 
   // ---- 5. 结构契约：写入型操作的防重复 ----
   const throttleMatrix = [
-    ['money', ['money-save', 'account-save']],
     ['habit', ['habit-check-', 'habit-save']],
-    /* today 队列统一走 queue-tap- 防重；数值录入弹层是 today-value-save */
-    ['today', ['queue-tap-', 'today-value-save']],
+    /* today 队列统一走 queue-done- 防重（查看详情是 queue-detail-）；数值录入弹层是 today-value-save */
+    ['today', ['queue-done-', 'today-value-save']],
     ['plan', ['plan-save', 'plan-toggle-']],
     ['shopping', ['shopping-save', 'shopping-toggle-']],
     ['fitness', ['weight-save', 'deficit-save', 'plan-save', 'plan-toggle-', 'fitness-settings-save']],
     ['memory', ['memory-save']],
     ['media', ['media-save']],
-    ['mine', ['budget-save']]
+    ['money', ['money-budget-save', 'money-save', 'account-save']],
   ];
   for (const [name, keys] of throttleMatrix) {
     const js = read(`miniprogram/pages/${name}/${name}.js`);

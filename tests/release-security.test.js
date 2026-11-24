@@ -40,7 +40,7 @@ assert.match(caddyfile, /reverse_proxy 127\.0\.0\.1:8787/, 'HTTPS 代理必须�
 assert.match(caddyfile, /handle \/ws/, 'HTTPS 代理必须覆盖 WebSocket 路径');
 assert.ok(fs.existsSync(path.join(root, 'docs/PRIVACY.md')), '必须提供可配置到微信后台的隐私指引');
 assert.ok(fs.existsSync(path.join(root, 'docs/USER_AGREEMENT.md')), '必须提供用户协议模板');
-assert.match(legal, /个性化 AI/, '小程序内必须说明可选 AI 的数据边界');
+assert.match(legal, /不向外部 AI 服务发送生活记录/, '小程序内必须说明首发的 AI 数据处理范围');
 /*
  * 「我的」页的合规入口。2026-09-24 做过信息架构收纳：原先三份法律文档各占一行，
  * 现合并为一行「隐私与合规」→ pages/legal/legal（该页自带三个 tab）。

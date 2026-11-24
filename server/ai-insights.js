@@ -5,10 +5,12 @@
  * 只有用户主动开启个性化 AI 后，才会将白名单摘要发送给模型；不包含手机号、账户余额、原始账本备注或 record id。
  */
 const crypto = require('crypto');
+const { toCents, fromCents } = require('../miniprogram/utils/amount');
 const { buildMonthlyReport } = require('../miniprogram/utils/report-utils');
 const { buildTodayQueue } = require('../miniprogram/utils/daily-utils');
 const { recordItems } = require('../miniprogram/utils/memory-utils');
 const { addDays } = require('../miniprogram/utils/plan-utils');
+const { TRIAL_INSIGHT_PREFIX, insightConsentField } = require('./ai-consent');
 const { createSecretManager } = require('./secret-store');
 
 const AI_SECRET_NAME = 'deepseek_api_key';
@@ -48,19 +50,19 @@ function dataItems(records, collection) {
   return activeRecords(records, collection).map((record) => ({ id: record.id, ...record.data }));
 }
 
-function hasAiConsent(records) {
-  return activeRecords(records, 'settings').some((record) => record.id === 'app' && record.data.aiConsent === true);
+function hasAiConsent(records, key = 'aiConsent') {
+  return activeRecords(records, 'settings').some((record) => record.id === 'app' && record.data[key] === true);
 }
 
 function sortMoneyCategories(items) {
-  const categories = {};
+  const categories = Object.create(null);
   items.forEach((item) => {
     if (item.type !== 'expense') return;
     const category = cleanText(item.category || '其他', 24);
-    const amount = Number(item.amount);
+    const amount = toCents(item.amount);
     if (category && Number.isFinite(amount) && amount > 0) categories[category] = (categories[category] || 0) + amount;
   });
-  return Object.keys(categories).map((category) => ({ category, amount: Math.round(categories[category] * 100) / 100 }))
+  return Object.keys(categories).map((category) => ({ category, amount: fromCents(categories[category]) }))
     .sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category, 'zh-Hans-CN'))
     .slice(0, 5);
 }
@@ -70,14 +72,14 @@ function todayMoney(items, date) {
   let expense = 0;
   const current = items.filter((item) => item.date === date);
   current.forEach((item) => {
-    const amount = Number(item.amount);
+    const amount = toCents(item.amount);
     if (!Number.isFinite(amount) || amount < 0) return;
     if (item.type === 'income') income += amount;
     if (item.type === 'expense') expense += amount;
   });
   return {
-    income: Math.round(income * 100) / 100,
-    expense: Math.round(expense * 100) / 100,
+    income: fromCents(income),
+    expense: fromCents(expense),
     topCategories: sortMoneyCategories(current)
   };
 }
@@ -288,33 +290,46 @@ function createInsightService(options) {
   const input = options || {};
   const store = input.store;
   const config = input.config || {};
-  const secretManager = createSecretManager(store, config);
+  const aiEnabled = Boolean(config.ai && config.ai.enabled !== false);
+  const trialEnabled = Boolean(config.ai && config.ai.trialEnabled);
+  const secretManager = aiEnabled || trialEnabled ? createSecretManager(store, config) : null;
   const fetchImpl = input.fetchImpl;
   return {
-    async getInsight(ownerId, scope, period, now) {
+    async getInsight(ownerId, scope, period, now, isTrial = false) {
       const current = now instanceof Date ? now : new Date();
       const records = await store.exportRecords(ownerId);
       const context = buildInsightContext(records, scope, period, current);
-      const key = insightKey(scope, period);
-      const contextHash = stableHash(context);
       const fallback = fallbackInsight(scope, context);
-      // 明确同意是调用第三方 AI 的前提；关闭后仅返回本地确定性文案，且不读取旧缓存。
-      if (!hasAiConsent(records)) {
+      if (!hasAiConsent(records, insightConsentField(isTrial))) {
         return { content: fallback, source: 'local', generatedAt: Date.now() };
       }
+      if (isTrial ? !trialEnabled : !aiEnabled) {
+        return { content: fallback, source: 'fallback', generatedAt: Date.now() };
+      }
+      const tracksConsent = typeof store.getAiConsentRevision === 'function';
+      const consentRevision = tracksConsent ? await store.getAiConsentRevision(ownerId, isTrial) : undefined;
+      if (tracksConsent && !consentRevision) return { content: fallback, source: 'local', generatedAt: Date.now() };
+      const key = (isTrial ? TRIAL_INSIGHT_PREFIX : '') + insightKey(scope, period);
+      const contextHash = stableHash(context);
       const cached = typeof store.getAiInsight === 'function' ? await store.getAiInsight(ownerId, key) : null;
       if (cached && cached.contextHash === contextHash && cached.content) {
         return { content: normalizeInsightText(cached.content), source: 'cache', generatedAt: Number(cached.generatedAt) || Date.now() };
       }
-      if (!config.ai || config.ai.enabled === false || !hasSignal(scope, context)) {
+      if (!hasSignal(scope, context)) {
         return { content: fallback, source: 'fallback', generatedAt: Date.now() };
       }
       let apiKey = '';
       try { apiKey = await secretManager.get(AI_SECRET_NAME); } catch (error) { apiKey = ''; }
       if (!apiKey) return { content: fallback, source: 'fallback', generatedAt: Date.now() };
       try {
+        if (tracksConsent && await store.getAiConsentRevision(ownerId, isTrial) !== consentRevision) {
+          return { content: fallback, source: 'local', generatedAt: Date.now() };
+        }
         const content = await requestDeepSeek(config, apiKey, scope, period, context, fetchImpl);
-        if (typeof store.saveAiInsight === 'function') await store.saveAiInsight(ownerId, key, contextHash, content);
+        if (typeof store.saveAiInsight === 'function') {
+          const saved = await store.saveAiInsight(ownerId, key, contextHash, content, consentRevision);
+          if (saved === false) return { content: fallback, source: 'local', generatedAt: Date.now() };
+        }
         return { content, source: 'ai', generatedAt: Date.now() };
       } catch (error) {
         const status = error && error.providerStatus ? ' provider_' + error.providerStatus : '';

@@ -63,6 +63,22 @@ try {
   }, undefined], '明确保存才应进入同步队列');
   assert.strictEqual(storage.wb_life_memory_draft_new, undefined, '成功保存应清理草稿');
 
+  page.openEditById('old');
+  store.state.records.memories.old = { ...store.state.records.memories.old, updatedAt: 2,
+    data: { ...store.state.records.memories.old.data, content: '另一设备的新内容' } };
+  page.closeComposer();
+  assert.strictEqual(storage.wb_life_memory_draft_old, undefined, '关闭未修改的编辑器不会生成草稿');
+  page.openEditById('old');
+  assert.strictEqual(page.data.form.content, '另一设备的新内容');
+  page.onContent({ detail: { value: '草稿' } });
+  page.closeComposer();
+  assert.strictEqual(storage.wb_life_memory_draft_old.baseUpdatedAt, 2);
+  page.openEditById('old');
+  assert.strictEqual(page.data.form.content, '草稿');
+  page.onContent({ detail: { value: '' } });
+  page.closeComposer();
+  assert.strictEqual(storage.wb_life_memory_draft_old, undefined, '清空表单也应移除已有草稿');
+
   page.removeMemory.call(page, { currentTarget: { dataset: { id: 'old' } } });
   assert.deepStrictEqual(writes.pop(), ['remove', 'memories', 'old'], '删除必须走同步墓碑协议');
   clearTimeout(page.__undoTimer);

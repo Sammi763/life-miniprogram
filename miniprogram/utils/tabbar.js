@@ -1,5 +1,7 @@
 /* 自定义 Tab 导航的选中态由当前页面主动同步，避免组件复用时沿用上一个页面的索引。 */
 
+const { diffSetData } = require('./ui');
+
 /* Tab 索引常量：页面里写 syncTabBar(this, TAB.HABIT)，别再手写魔法数字 */
 const TAB = { TODAY: 0, MONEY: 1, HABIT: 2, MINE: 3 };
 
@@ -71,7 +73,7 @@ function syncTabBar(page, selected, badges) {
   const theme = require('./theme');
   const hidden = overlayVisible(page.data);
   page.__tabbarOverlay = hidden;
-  tabBar.setData({
+  diffSetData(tabBar, {
     selected: Number(selected),
     themeStyle: theme.getThemeStyle(page.data && page.data.themeId),
     hidden,

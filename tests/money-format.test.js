@@ -12,6 +12,7 @@ const path = require('path');
 const root = path.resolve(__dirname, '..');
 function read(relative) { return fs.readFileSync(path.join(root, relative), 'utf8'); }
 
+const { toCents, parseMoneyInput, moneyInputText, amountError } = require('../miniprogram/utils/amount');
 const { roundMoney, formatMoney } = require('../miniprogram/utils/finance');
 
 /* ---------- 1. 约定本身：整数不带小数；有小数最多两位且去掉末尾 0 ---------- */
@@ -28,12 +29,20 @@ assert.strictEqual(formatMoney(NaN), '0');
 /* 浮点误差必须在取整到分时被消掉，否则会显示 0.30000000000000004 */
 assert.strictEqual(formatMoney(0.1 + 0.2), '0.3');
 assert.strictEqual(roundMoney(0.1 + 0.2), 0.3);
-/*
- * 已知边界（刻意记录，不是 bug）：1.005 的二进制表示是 1.00499999…，乘 100 后向下取整成 1.00。
- * 用 Number.EPSILON 硬拗只对小数字管用，反而会在金额变大时出错，所以保持 Math.round。
- * 实际数据不会走到这里：金额在写入本地前都会先过 parseMoneyInput / roundMoney 归一到两位。
- */
-assert.strictEqual(formatMoney(1.005), '1');
+/* 十进制半分远离零取整，避开浮点乘法在 1.005 上的误差。 */
+assert.strictEqual(formatMoney(1.005), '1.01');
+assert.strictEqual(formatMoney(-1.005), '-1.01');
+assert.strictEqual(toCents('000.005'), 1);
+assert.strictEqual(toCents(1e-7), 0);
+assert.strictEqual(toCents(1000000000), 100000000000);
+assert.ok(Number.isNaN(toCents('0x10')));
+assert.ok(Number.isNaN(toCents('1e1')));
+assert.ok(Number.isNaN(parseMoneyInput('-0.004')));
+assert.strictEqual(moneyInputText('1.005'), '1.01');
+assert.strictEqual(moneyInputText('-1.005', true), '-1.01');
+assert.strictEqual(moneyInputText('0.004'), '0.00');
+assert.strictEqual(moneyInputText('0.004', false, true), '0.004');
+assert.strictEqual(amountError('0.004', parseMoneyInput('0.004')), '金额不足 0.01 元');
 
 /* ---------- 2. 只允许一处金额格式化实现 ---------- */
 const utilsDir = path.join(root, 'miniprogram/utils');
@@ -72,7 +81,7 @@ assert.ok(!/function formatMoney/.test(reportUtils), '月报不得再自带一�
 
 const shopping = read('miniprogram/pages/shopping/shopping.js');
 assert.ok(/require\('\.\.\/\.\.\/utils\/finance'\)/.test(shopping), '待买页必须复用 finance.formatMoney');
-assert.ok(/formatMoney\(Number\(record\.data\.price\)\)/.test(shopping), '待买页价格必须走 formatMoney');
+assert.ok(/formatMoney\(record\.data\.price\)/.test(shopping), '待买页价格必须走 formatMoney');
 
 const money = read('miniprogram/pages/money/money.js');
 assert.ok(!/function formatBalance/.test(money), '记账页不应再保留自定义 formatBalance');

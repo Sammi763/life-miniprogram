@@ -1,5 +1,3 @@
-.fab { bottom: calc(164rpx + env(safe-area-inset-bottom)); z-index: 101; }
-
 .mon-head {
   display: flex; align-items: center; justify-content: center;
   gap: 40rpx; padding: 32rpx 0 20rpx;
@@ -10,6 +8,7 @@
   display: flex; align-items: center; justify-content: center;
   font-size: 40rpx; color: var(--ink-2);
 }
+.money-add { margin: 0 24rpx 20rpx; }
 .report-entry { display:flex; justify-content:space-between; align-items:center; margin:0 24rpx 20rpx; padding:20rpx 24rpx; border-radius:18rpx; color:var(--accent); background:var(--accent-wash); font-size:26rpx; }
 .report-entry text:last-child { font-size: 22rpx; color: var(--ink-2); }
 
@@ -93,7 +92,8 @@
 .cat-tag { font-size:18rpx; color:var(--terra); background:var(--terra-soft); border-radius:6rpx; padding:2rpx 8rpx; }
 .cat-tag.dim { color:var(--ink-2); background:var(--surface); border:1rpx solid var(--line); }
 .cat-row-actions { display:flex; align-items:center; gap:14rpx; flex-shrink:0; }
-.cat-act { font-size:22rpx; color:var(--ink-2); padding:8rpx 14rpx; border-radius:10rpx; border:1rpx solid var(--line); white-space:nowrap; }
+/* U09：分类管理操作按钮加大热区 */
+.cat-act { font-size:22rpx; color:var(--ink-2); padding:14rpx 18rpx; border-radius:10rpx; border:1rpx solid var(--line); white-space:nowrap; }
 .cat-act.on { color:var(--terra); border-color:var(--terra); background:var(--terra-soft); }
 .cat-act.danger { color:var(--red); }
 .cat-add-row { display:flex; align-items:center; gap:16rpx; }
@@ -123,3 +123,19 @@
 /* 还款提醒行与续订横幅（v2.11 提醒矩阵） */
 .bill-reminder-row { margin-top: 4rpx; }
 .reminder-banner { margin-top: 4rpx; padding: 18rpx 22rpx; border-radius: 16rpx; background: var(--warn-soft); color: var(--amber); font-size: 26rpx; }
+
+
+/* U05 预算编辑器：预算行 + 编辑入口 */
+.budget-line { display:flex; justify-content:space-between; align-items:center; margin-top:16rpx; padding:14rpx 18rpx; border-radius:14rpx; background:var(--surface); }
+.budget-edit-hint { color:var(--terra); font-size:24rpx; }
+.budget-row-list { display:flex; flex-direction:column; gap:10rpx; max-height:46vh; overflow-y:auto; }
+.budget-row { display:flex; justify-content:space-between; align-items:center; min-height:72rpx; border-bottom:1rpx solid var(--line); }
+.budget-row-name { color:var(--ink); font-size:26rpx; }
+.budget-row-input { display:flex; align-items:center; gap:6rpx; color:var(--ink-2); }
+.budget-row-input input { width:160rpx; text-align:right; }
+.budget-hint { margin-top:14rpx; }
+
+.category-actions { gap: 16rpx; }
+.category-actions .btn { flex: 1; }
+
+.ledger-filter-totals { margin-top: 14rpx; }

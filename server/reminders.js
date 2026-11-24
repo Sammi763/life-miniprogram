@@ -1,3 +1,4 @@
+const { billOutstanding, hasOutstandingHabits } = require('./db/reminder-scan');
 const crypto = require('crypto');
 const { sendSubscriptionMessage } = require('./wechat');
 
@@ -51,13 +52,20 @@ function messageFor(reminder, config) {
   const page = kind === 'habit' ? 'pages/habit/habit'
     : kind === 'bill' ? 'pages/money/money'
       : (config.wxReminderPage || 'pages/plan/plan');
+  const fields = (config.reminderFields && config.reminderFields[kind]) || { title: 'thing1', when: 'time2' };
+  const fallbackTitle = kind === 'habit' ? '习惯提醒' : kind === 'bill' ? '还款提醒' : '日程提醒';
+  const cleanTitle = String(reminder.title || '').replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  const title = Array.from(cleanTitle || fallbackTitle).slice(0, 20).join('');
+  const billDueDate = kind === 'bill' && /:(\d{4})-(\d{2})-(\d{2})$/.exec(reminder.planId);
+  let when = formatDueAt(reminder.dueAt) + (fields.when.startsWith('date') ? ':00' : '');
+  if (billDueDate) when = billDueDate[1] + '年' + Number(billDueDate[2]) + '月' + Number(billDueDate[3]) + '日';
   return {
     touser: reminder.ownerId,
     templateId,
     page,
     data: {
-      thing1: { value: String(reminder.title || (kind === 'habit' ? '习惯提醒' : kind === 'bill' ? '还款提醒' : '日程提醒')).slice(0, 20) },
-      time2: { value: formatDueAt(reminder.dueAt) }
+      [fields.title]: { value: title },
+      [fields.when]: { value: when }
     }
   };
 }
@@ -86,6 +94,23 @@ async function consumeCreditSafely(store, reminder) {
   try { await store.addReminderCredit(reminder.ownerId, kind, -1); } catch (error) { /* 额度扣减失败不影响投递结果 */ }
 }
 
+async function habitReminderStillDue(store, reminder) {
+  const today = localToday();
+  if (reminder.planId !== 'habit:' + today) return false;
+  const [habits, setting, credits] = await Promise.all([
+    store.getCollection(reminder.ownerId, 'habit'),
+    store.getRecord(reminder.ownerId, 'settings', 'app'),
+    store.getReminderCredits(reminder.ownerId)
+  ]);
+  return Boolean(setting && !setting.deletedAt && setting.data.habitReminderEnabled &&
+    credits.habit > 0 && hasOutstandingHabits(Object.entries(habits).map(([id, record]) => ({ ...record, id })), today));
+}
+
+async function billReminderStillDue(store, reminder) {
+  const match = /^bill:([^:]+):(\d{4}-\d{2}-\d{2})$/.exec(reminder.planId);
+  return Boolean(match && await billOutstanding(store, reminder.ownerId, match[1], match[2]));
+}
+
 function createReminderWorker(store, config, sender) {
   const send = sender || sendSubscriptionMessage;
   const workerId = crypto.randomBytes(12).toString('hex');
@@ -103,6 +128,15 @@ function createReminderWorker(store, config, sender) {
           : [];
         for (const reminder of reminders) {
           try {
+            const kind = kindOfReminder(reminder);
+            if (kind === 'habit' && (!reminderKindEnabled(config, 'habit') || !(await habitReminderStillDue(store, reminder)))) {
+              await store.finishReminder(reminder.id, workerId, 'cancelled', '');
+              continue;
+            }
+            if (kind === 'bill' && !(await billReminderStillDue(store, reminder))) {
+              await store.finishReminder(reminder.id, workerId, 'cancelled', 'bill_settled');
+              continue;
+            }
             await send(config, messageFor(reminder, config));
             await store.finishReminder(reminder.id, workerId, 'sent', '');
             await consumeCreditSafely(store, reminder);

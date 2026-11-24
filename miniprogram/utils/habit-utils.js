@@ -7,6 +7,50 @@
 
 const MODES = ['check', 'count', 'value'];
 const HISTORY_WEEKS = 12;
+const EVERY_DAY = 127;
+
+function scheduledWeekdays(def, date) {
+  const schedule = unwrap(def).schedule;
+  if (!schedule) return EVERY_DAY;
+  if (schedule.startDate && date < schedule.startDate) return 0;
+  const changes = schedule.changes;
+  for (let i = changes.length - 1; i >= 0; i--) {
+    if (changes[i].date <= date) return changes[i].days;
+  }
+  return EVERY_DAY;
+}
+
+function isScheduled(def, date) {
+  const weekday = new Date(date + 'T00:00:00').getDay();
+  return Number.isFinite(weekday) && Boolean(scheduledWeekdays(def, date) & (1 << ((weekday + 6) % 7)));
+}
+
+function updateSchedule(def, date, days, updatedAt = Date.now()) {
+  const previous = unwrap(def).schedule;
+  if (previous && previous.startDate > date) date = previous.startDate;
+  if (def && scheduledWeekdays(def, date) === days) return previous;
+  const changes = previous ? previous.changes.filter((change) => change.date !== date) : [];
+  if (days !== EVERY_DAY || changes.length || previous) changes.push({ date, days, updatedAt });
+  changes.sort((a, b) => a.date.localeCompare(b.date));
+  return { ...(def ? previous : { startDate: date }), changes };
+}
+
+function preserveHabitSchedule(previous, next) {
+  if (previous.kind !== 'def' || next.kind !== 'def' || !previous.schedule) return next;
+  if (!next.schedule) return { ...next, schedule: previous.schedule };
+  const startDate = previous.schedule.startDate || next.schedule.startDate;
+  const changes = new Map(previous.schedule.changes.map((change) => [change.date, change]));
+  for (const change of next.schedule.changes) {
+    if (startDate && change.date < startDate) continue;
+    const current = changes.get(change.date);
+    // An edit from another device can carry an older copy of an unrelated revision.
+    if (!current || (current.updatedAt || 0) <= (change.updatedAt || 0)) changes.set(change.date, change);
+  }
+  return { ...next, schedule: {
+    ...(startDate ? { startDate } : {}),
+    changes: Array.from(changes.values()).sort((a, b) => a.date.localeCompare(b.date))
+  } };
+}
 
 function normalizeMode(mode, fallback) {
   if (MODES.indexOf(mode) >= 0) return mode;
@@ -115,14 +159,14 @@ function buildHabitHistory(records, def, todayText, weeks) {
     let level = 0;
     if (done) level = 3;
     else if (value > 0) level = value * 3 >= target ? 2 : 1;
-    week.push({ date, value, done, recorded: Boolean(entry), future: date > today, level });
+    week.push({ date, value, done, recorded: Boolean(entry), future: date > today, scheduled: isScheduled(def, date), level });
     if (week.length === 7) { grid.push(week); week = []; }
   }
   return { grid, start: fmtDate(start), today };
 }
 
 module.exports = {
-  MODES, HISTORY_WEEKS,
+  MODES, HISTORY_WEEKS, EVERY_DAY, scheduledWeekdays, isScheduled, updateSchedule, preserveHabitSchedule,
   normalizeMode, entryMode, entryTarget, isEntryDone,
   makeEntryId, findEntry, entryWrite, buildHabitHistory, fmtDate
 };

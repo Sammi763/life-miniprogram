@@ -2,6 +2,7 @@ const store = require('../../utils/store');
 const sync = require('../../utils/sync');
 const ui = require('../../utils/ui');
 const api = require('../../utils/api');
+const avatarImage = require('../../utils/avatar');
 const { buildTextAvatar } = require('../../utils/text-avatar');
 const { syncTabBar, attachOverlayWatcher, TAB } = require('../../utils/tabbar');
 const { pickSettings } = require('../../utils/settings-utils');
@@ -11,44 +12,7 @@ const theme = require('../../utils/theme');
 const reminderClient = require('../../utils/reminder-client');
 const share = require('../../utils/share');
 
-const MODULES = [
-  { title: '生活时间线', detail: '随手写下此刻', glyph: '记', tone: 'memory', url: '/pages/memory/memory' },
-  { title: '每周复盘', detail: '完成、账本与下周', glyph: '周', tone: 'review', url: '/pages/review/review' },
-  { title: '统一搜索', detail: '回看所有生活记录', glyph: '查', tone: 'search', url: '/pages/search/search' },
-  { title: '日程统筹', detail: '待办与提醒', glyph: '日', tone: 'plan', url: '/pages/plan/plan' },
-  { title: '月度报告', detail: '私密财务与生活回顾', glyph: '月', tone: 'report', url: '/pages/report/report' },
-  { title: '待买清单', detail: '采购与心愿', glyph: '购', tone: 'shopping', url: '/pages/shopping/shopping' },
-  { title: '书影音', detail: '收藏与回顾', glyph: '阅', tone: 'media', url: '/pages/media/media' },
-  { title: '减脂健身', detail: '体重与计划', glyph: '健', tone: 'fitness', url: '/pages/fitness/fitness' }
-];
-
-function syncPresentation(syncState, pendingCount, rejectedCount) {
-  if (rejectedCount) {
-    return {
-      text: '部分未同步',
-      detail: rejectedCount + ' 条改动被云端拒绝，未写入专属空间',
-      tone: 'status-offline'
-    };
-  }
-  if (syncState === 'syncing') return { text: '正在同步', detail: '正在把最新记录安全保存', tone: 'status-syncing' };
-  if (syncState === 'offline') {
-    return {
-      text: pendingCount ? '暂存本机' : '等待连接',
-      detail: pendingCount ? pendingCount + ' 条改动会在网络恢复后自动同步' : '网络恢复后会自动继续同步',
-      tone: 'status-offline'
-    };
-  }
-  return { text: '已安全同步', detail: '你的记录已同步到专属空间', tone: 'status-ready' };
-}
-
 const ISSUE_KIND_LABELS = { onError: '运行错误', onUnhandledRejection: '未处理的异步异常' };
-
-/* 分类预算五项均为支出方向；隐藏条目为 {name,type}（新）或字符串（旧，读取时迁移前的兜底） */
-function isHiddenCategory(hiddenList, name) {
-  const list = Array.isArray(hiddenList) ? hiddenList : [];
-  const hidden = list.some((item) => (item && item.name === name && item.type === 'expense') || item === name);
-  return hidden ? '（已隐藏）' : '';
-}
 
 /* 「已记录 N 天」：跨账本、日程、健身、随记统计有记录的不同日期数 */
 function countActiveDays(state) {
@@ -67,18 +31,15 @@ function countActiveDays(state) {
 
 Page({
   data: {
-    syncText: '—',
-    syncDetail: '',
-    syncTone: 'status-ready',
     recordCount: 0,
     activeDays: 0,
-    pendingCount: 0,
-    budgetInput: '',
-    categoryBudgetInputs: [],
     themeId: 'forest',
     themeSetting: 'forest',
     themeOptions: [],
+    /* 主题收纳为一行入口 + 弹层（U03）：减少「我的」页长度 */
+    themeSheetShow: false,
     deletingAccount: false,
+    showPersonalizedAi: false,
     aiConsent: false,
     cacheText: '—',
     cacheError: '',
@@ -98,18 +59,23 @@ Page({
     importText: '',
     importPreview: null,
     importBusy: false,
-    modules: MODULES,
     profile: { nickname: '生活记忆用户', avatarText: '生', avatarTone: 'avatar-tone-0' }
   },
   unsub: null,
   onLoad() {
     // 弹层打开时整体隐藏悬浮导航：自定义 tabBar 压在页面之上（详见 utils/tabbar.js）
     attachOverlayWatcher(this);
-    this.unsub = store.subscribe(() => this.render());
-    this.loadProfile();
-    this.render();
+    this.unsub = ui.bindStore(this, null, () => this.render(), () => this.renderSaveIssues());
   },
-  onShow() { theme.applyToPage(this); share.enableShareMenu(); syncTabBar(this, TAB.MINE); this.loadProfile(); },
+  onShow() {
+    this.__pageHidden = false;
+    share.enableShareMenu();
+    this.loadProfile();
+    if (api.getToken() && api.validateSession) api.validateSession().then((profile) => this.loadProfile(profile)).catch(() => {});
+    this.render();
+    syncTabBar(this, TAB.MINE);
+  },
+  onHide() { this.__pageHidden = true; },
   onShareAppMessage: share.onShareAppMessage('mine'),
   onShareTimeline: share.onShareTimeline('mine'),
   onUnload() { this.unsub && this.unsub(); clearTimeout(this.__undoTimer); },
@@ -118,22 +84,30 @@ Page({
   },
 
   /* 数据管理弹层：四项都是「点一下就完事」的低频运维，不需要独立页面 */
+  openReminderCenter() { wx.navigateTo({ url: '/pages/activity/activity' }); },
+
   openDataSheet() { this.setData({ dataSheetShow: true }); },
   closeDataSheet() { if (this.data.dataSheetShow) this.setData({ dataSheetShow: false }); },
   noop() {},
 
-  loadProfile() {
-    const profile = api.getProfile();
+  loadProfile(profile = api.getProfile()) {
     const nickname = profile.nickname || '生活记忆用户';
     const avatar = buildTextAvatar(nickname);
-    this.setData({
+    ui.diffSetData(this, {
       profile: {
         nickname,
         avatarText: avatar.label,
         avatarTone: avatar.tone
       }
     });
+    avatarImage.load(profile).then((path) => {
+      if (profile.avatarVersion === api.getProfile().avatarVersion && !this.__pageHidden) {
+        ui.diffSetData(this, { avatarPath: path });
+      }
+    });
   },
+
+  avatarError() { this.setData({ avatarPath: '' }); },
 
   render() {
     const s = store.state;
@@ -142,19 +116,28 @@ Page({
     const themeId = theme.getThemeId(settings.theme);
     const themeChoice = settings.theme === theme.AUTO_THEME_ID ? theme.AUTO_THEME_ID : themeId;
     theme.applyToPage(this, themeId);
-    const categoryBudgets = settings.categoryBudgets && typeof settings.categoryBudgets === 'object' ? settings.categoryBudgets : {};
     let n = 0;
     for (const c of store.COLLECTIONS) {
       for (const r of Object.values(s.records[c])) if (!r.deletedAt) n++;
     }
-    const presentation = syncPresentation(s.syncState, s.queue.length, s.rejectedWrites.length);
-    this.setData({
-      syncText: presentation.text,
-      syncDetail: presentation.detail,
-      syncTone: presentation.tone,
+    const { aiConsentKey, isProduction } = api.getRuntimeConfig();
+    ui.diffSetData(this, {
       recordCount: n,
       activeDays: countActiveDays(s),
-      pendingCount: s.queue.length,
+      showPersonalizedAi: Boolean(aiConsentKey),
+      aiConsent: Boolean(aiConsentKey && settings[aiConsentKey] === true),
+      themeId,
+      themeSetting: themeChoice,
+      themeOptions: theme.getThemeOptions(themeChoice),
+      themeName: (theme.getThemeOptions(themeChoice).find((option) => option.selected) || {}).name || themeId,
+      showDemoControls: !isProduction
+    });
+    this.renderSaveIssues();
+  },
+
+  renderSaveIssues() {
+    const s = store.state;
+    ui.diffSetData(this, {
       rejectedCount: s.rejectedWrites.length,
       // 把「哪一条、被什么状态码拒绝」说清楚，用户才能判断是数据格式问题还是服务端版本问题
       rejectedText: (() => {
@@ -164,14 +147,9 @@ Page({
         const label = last.item.collection + (last.item.id ? '/' + last.item.id : '');
         const reason = last.statusCode ? 'HTTP ' + last.statusCode : '被拒绝';
         const tail = last.code ? '（' + last.code + '）' : '';
-        return list.length + ' 条改动未被云端接受，本机已保留你填的值。最近一条：' + label + ' · ' + reason + tail +
+        return list.length + ' 条改动未保存到账号。最近一条：' + label + ' · ' + reason + tail +
           '。这类写入不会自动重试，可点「重试」再提交一次。';
       })(),
-      aiConsent: settings.aiConsent === true,
-      themeId,
-      themeSetting: themeChoice,
-      themeOptions: theme.getThemeOptions(themeChoice),
-      showDemoControls: !api.getRuntimeConfig().isProduction,
       // 本机缓存占用直接取上次落盘的实测体积，避免每次渲染都重新序列化全量数据
       cacheText: s.persistSize ? (Math.max(1, Math.round(s.persistSize / 1024)) + ' KB') : '—',
       cacheError: s.persistError || '',
@@ -182,15 +160,7 @@ Page({
         if (!issue) return '';
         const label = ISSUE_KIND_LABELS[issue.kind] || issue.kind;
         return label + '：' + issue.text;
-      })(),
-      budgetInput: settings.budget ? String(settings.budget) : '',
-      // 已隐藏的记账分类保留其预算数值，行上标注「已隐藏」避免用户以为丢配置；
-      // 隐藏条目按方向+名称识别（兼容旧扁平字符串），分类预算五项均为支出方向
-      categoryBudgetInputs: ['餐饮', '交通', '娱乐休闲', '居家用品', '医疗健康'].map((key) => ({
-        key,
-        value: categoryBudgets[key] === undefined ? '' : String(categoryBudgets[key]),
-        hiddenSuffix: isHiddenCategory(settings.hiddenCategories, key)
-      }))
+      })()
     });
   },
 
@@ -202,6 +172,9 @@ Page({
     theme.selectTheme(choice);
     /* 不再弹 toast：选中态已有 ✓ 角标，双重反馈是噪音 */
   },
+  /* 主题收纳为一行入口 + 弹层（U03） */
+  openThemeSheet() { this.setData({ themeSheetShow: true }); },
+  closeThemeSheet() { if (this.data.themeSheetShow) this.setData({ themeSheetShow: false }); },
 
   /* ---- 提醒设置弹层（v2.11）：额度展示 + 续订；开关本体在习惯页/记账页 ---- */
   openReminderSheet() {
@@ -240,48 +213,18 @@ Page({
     }
   },
 
-  onBudgetInput(e) { this.setData({ budgetInput: (e.detail && e.detail.value) || '' }); },
-  onCategoryBudgetInput(e) {
-    const key = e.currentTarget.dataset.key;
-    const value = (e.detail && e.detail.value) || '';
-    this.setData({ categoryBudgetInputs: this.data.categoryBudgetInputs.map((item) => item.key === key ? { ...item, value } : item) });
-  },
-  saveBudget() {
-    const source = String(this.data.budgetInput || '').trim();
-    const budget = source === '' ? 0 : Number(source);
-    if (!Number.isFinite(budget) || budget < 0 || budget > 1000000) {
-      wx.showToast({ title: '预算应为 0～100 万之间的金额', icon: 'none' });
-      return;
-    }
-    const settings = pickSettings(store.state.records.settings.app && store.state.records.settings.app.data);
-    const categoryBudgets = { ...(settings.categoryBudgets || {}) };
-    for (const item of this.data.categoryBudgetInputs) {
-      const input = String(item.value || '').trim();
-      if (!input) { delete categoryBudgets[item.key]; continue; }
-      const value = Math.round(Number(input) * 100) / 100;
-      if (!Number.isFinite(value) || value < 0 || value > 1000000) {
-        wx.showToast({ title: item.key + '预算应为 0～100 万', icon: 'none' });
-        return;
-      }
-      categoryBudgets[item.key] = value;
-    }
-    const normalizedBudget = Math.round(budget * 100) / 100;
-    const next = { ...settings, budget: normalizedBudget };
-    if (Object.keys(categoryBudgets).length) next.categoryBudgets = categoryBudgets;
-    else delete next.categoryBudgets;
-    if (ui.isRepeatedTap(this, 'budget-save', 600)) return;
-    sync.upsert('settings', next, 'app');
-    this.setData({ budgetInput: normalizedBudget ? String(normalizedBudget) : '' });
-    wx.showToast({ title: normalizedBudget ? '本月预算已保存' : '已清除本月预算', icon: 'success' });
-  },
+  /* 预算编辑已迁回「记账」页（U03/U05）：那里能直接引用全部自定义支出分类 */
 
   saveAiConsent(enabled) {
     const settings = pickSettings(store.state.records.settings.app && store.state.records.settings.app.data);
-    sync.upsert('settings', { ...settings, aiConsent: Boolean(enabled) }, 'app');
+    const { aiConsentKey } = api.getRuntimeConfig();
+    if (!aiConsentKey) return;
+    sync.upsert('settings', { ...settings, [aiConsentKey]: Boolean(enabled) }, 'app');
     this.setData({ aiConsent: Boolean(enabled) });
   },
 
   onAiConsentChange(event) {
+    if (!api.getRuntimeConfig().aiConsentKey) return;
     const enabled = Boolean(event.detail && event.detail.value);
     if (!enabled) {
       this.saveAiConsent(false);
@@ -319,8 +262,8 @@ Page({
     sync.flush().catch(() => {}).then(() => {
       wx.hideLoading();
       const rejected = store.state.rejectedWrites.length;
-      if (rejected) wx.showToast({ title: '仍有 ' + rejected + ' 条被云端拒绝', icon: 'none' });
-      else if (store.state.queue.length) wx.showToast({ title: '网络不可用，已暂存本机', icon: 'none' });
+      if (rejected) wx.showToast({ title: '仍有 ' + rejected + ' 条未保存到账号', icon: 'none' });
+      else if (store.state.queue.length) wx.showToast({ title: '仍有改动等待保存到账号', icon: 'none' });
       else wx.showToast({ title: '已重新提交 ' + n + ' 条改动', icon: 'success' });
     });
   },
@@ -358,7 +301,7 @@ Page({
       wx.setClipboardData({ data: JSON.stringify(payload) });
     }).catch(() => {
       done();
-      wx.showToast({ title: '云端导出失败，请稍后重试', icon: 'none' });
+      wx.showToast({ title: '备份导出失败，请稍后重试', icon: 'none' });
     });
   },
 
@@ -390,6 +333,8 @@ Page({
       this.setData({ importPreview: { ok: false, message: parsed.message } });
       return;
     }
+    const localWrites = parsed.backup.localWrites;
+    const localWriteCount = localWrites ? localWrites.pending.length + localWrites.rejected.length : 0;
     const preview = backup.previewImport(parsed.backup);
     if (preview.error) {
       this.setData({ importPreview: { ok: false, message: preview.message } });
@@ -405,8 +350,26 @@ Page({
         skipBackupDeleted: preview.skipBackupDeleted,
         invalidCount: preview.invalidCount || 0,
         invalidSample: preview.invalid,
+        roundedMoneyRecords: preview.roundedMoneyRecords,
+        localWriteCount,
+        moneyDifferences: preview.moneyDifferences.map((row) => {
+          const fields = [['income', '收入'], ['expense', '支出'], ['transfer', '转账'], ['balance', '结余']];
+          const text = fields.filter(([key]) => row[key].differenceCents).map(([key, label]) => {
+            const cents = row[key].differenceCents;
+            return label + ' ' + (cents > 0 ? '+' : '') + cents + ' 分';
+          }).join(' · ');
+          return { month: row.month, text };
+        }),
         byCollection: Object.keys(preview.byCollection).map((coll) => ({ coll, ...preview.byCollection[coll] }))
       }
+    });
+  },
+  copyImportLocalWrites() {
+    const parsed = backup.parseBackup(this.data.importText);
+    const localWrites = parsed.backup && parsed.backup.localWrites;
+    if (localWrites) wx.setClipboardData({
+      data: JSON.stringify(localWrites, null, 2),
+      fail: () => wx.showToast({ title: '复制失败，请重试', icon: 'none' })
     });
   },
   /*
@@ -444,9 +407,9 @@ Page({
       wx.hideLoading();
       // 中断时只说「已写入」（记录在本机、待续传），冲刷完成才说「已恢复」——不虚报同步结果
       const parts = [result.stopped ? '已写入 ' + result.created + ' 条记录' : '已恢复 ' + result.created + ' 条记录'];
-      if (result.cloudResolved) parts.push(result.cloudResolved + ' 条以云端为准');
+      if (result.cloudResolved) parts.push(result.cloudResolved + ' 条保留账号里的记录');
       if (result.stopped) parts.push(result.stopped);
-      const message = parts.join('；');
+      const message = parts.join('，');
       this.setData({ importSheetShow: false, importBusy: false, importText: '', importPreview: null });
       if (result.applied.length) {
         ui.armUndo(this, {
@@ -469,8 +432,8 @@ Page({
   },
 
   /*
-   * 重建本机缓存：清掉本地快照并从头全量重拉。
-   * 用于本机缓存写入失败或占用过大时自救；云端数据不受影响，未上送的队列会保留。
+   * 重建本机缓存（R06 原子重建）：先拉云端全量到 staging、叠加未同步改动、校验通过才替换；
+   * 失败保留旧缓存，页面不会先变空白。
    */
   rebuildLocalCache() {
     this.closeDataSheet();
@@ -478,16 +441,15 @@ Page({
     wx.showModal({
       title: '重建本机缓存？',
       content: pending
-        ? '本机缓存会清空并从云端重新拉取；' + pending + ' 条还没上送的改动会被保留。'
-        : '本机缓存会清空并从云端重新拉取。云端数据不受影响，拉取完成前页面可能短暂显示为空。',
+        ? '会重新读取账号里的记录并保留 ' + pending + ' 条仅保存在本机的改动。重建失败时保留当前缓存。'
+        : '会重新读取账号里的记录。重建失败时保留当前缓存。',
       confirmText: '重建',
       success: (result) => {
         if (!result.confirm) return;
-        store.rebuildCache();
-        ui.retryWithFeedback(() => sync.pull(), {
+        ui.retryWithFeedback(() => sync.rebuild(), {
           loadingTitle: '正在重建',
           okTitle: '本机缓存已重建',
-          failTitle: '重建未完成，请检查网络后重试'
+          failTitle: '重建未完成，原缓存保留，请检查网络后重试'
         });
       }
     });
@@ -515,7 +477,7 @@ Page({
     const dangerColor = theme.activeTokens()['--red'];
     wx.showModal({
       title: '永久删除账户？',
-      content: '这会删除云端资料、同步记录、提醒和会话。导出备份后再继续，此操作无法恢复。',
+      content: '这会删除该账号的资料、记录、提醒和会话。导出备份后再继续，此操作无法恢复。',
       confirmText: '继续',
       confirmColor: dangerColor,
       success: (result) => {
@@ -534,7 +496,9 @@ Page({
               return;
             }
             this.setData({ deletingAccount: true });
-            api.deleteAccount().then(() => {
+            // 删除前尽力冲刷未同步写入：让最近的改动先落到云端再删除，而不是随账号一起消失
+            const flushFirst = store.state.queue.length ? sync.flush().catch(() => {}) : Promise.resolve();
+            flushFirst.then(() => api.deleteAccount()).then(() => {
               sync.destroy();
               store.resetLocal();
               try { wx.removeStorageSync('wb_life_seeded'); } catch (error) { /* ignore */ }
@@ -549,28 +513,107 @@ Page({
       }
     });
   },
+
+  /*
+   * 退出账号（R01/R07）：未同步队列、被拒写入、本机缓存写失败是「只存在本机的唯一副本」，
+   * 退出前必须让用户确认处置 —— 先自动尝试同步，仍不干净时提供「导出本机副本」或取消；
+   * 清理范围与文案一致：本机同步缓存、队列、随记草稿、搜索历史（store.resetLocal 统一清除）。
+   */
   logout() {
+    if (this.__logoutAttempt || ui.isRepeatedTap(this, 'logout-tap', 800)) return;
+    const attempt = {};
+    this.__logoutAttempt = attempt;
+    const safety = store.assessDataSafety(store.state);
+    if (safety.pendingCount > 0 && store.state.syncState !== 'offline') {
+      wx.showLoading({ title: '正在保存改动', mask: true });
+      const finish = () => {
+        if (this.__logoutAttempt !== attempt || attempt.showing) return;
+        wx.hideLoading();
+        this.warnLocalOnlyLogout(attempt);
+      };
+      const guard = setTimeout(finish, 15000);
+      sync.flush().catch(() => {})
+        .then(() => sync.pull())
+        .catch(() => {})
+        .then(() => { clearTimeout(guard); finish(); });
+      return;
+    }
+    this.warnLocalOnlyLogout(attempt);
+  },
+  finishLogoutAttempt(attempt) {
+    if (this.__logoutAttempt === attempt) this.__logoutAttempt = null;
+  },
+  warnLocalOnlyLogout(attempt) {
+    if (this.__logoutAttempt !== attempt || attempt.showing) return;
+    attempt.showing = true;
+    const safety = store.assessDataSafety(store.state);
+    if (!safety.hasLocalOnly) return this.confirmLogout(attempt);
+    const parts = [];
+    if (safety.persistError) parts.push('本机缓存保存失败');
+    if (safety.rejectedCount) parts.push(safety.rejectedCount + ' 条改动未能保存到账号');
+    if (safety.pendingCount) parts.push(safety.pendingCount + ' 条改动还在等待保存到账号');
     wx.showModal({
-      title: '退出当前账号？',
-      content: '本机缓存会清除，云端数据不会删除。下次登录后可重新同步。',
+      title: '有内容只保存在本机',
+      content: parts.join('，') + '。退出会清掉这些仅存于本机的内容，建议先导出本机副本再退出。',
+      confirmText: '导出副本',
+      cancelText: '取消',
       confirmColor: theme.activeTokens()['--amber'],
       success: (result) => {
-        if (!result.confirm) return;
-        sync.destroy();
-        store.resetLocal();
-        try { wx.removeStorageSync('wb_life_seeded'); } catch (e) { /* ignore */ }
-        api.clearLogin();
-        wx.reLaunch({ url: '/pages/login/login' });
-      }
+        if (result.confirm) this.exportCopyThenLogout(attempt);
+        else this.finishLogoutAttempt(attempt);
+      },
+      fail: () => this.finishLogoutAttempt(attempt)
     });
+  },
+  /* 导出副本（离线可用）后再确认一次：未同步内容将被清除，用户知情后才执行 */
+  exportCopyThenLogout(attempt = this.__logoutAttempt) {
+    const copyFailed = () => {
+      this.finishLogoutAttempt(attempt);
+      wx.showToast({ title: '复制失败，未退出，请重试或取消', icon: 'none' });
+    };
+    let json;
+    try { json = JSON.stringify(backup.buildLocalBackup()); } catch (error) { return copyFailed(); }
+    wx.setClipboardData({
+      data: json,
+      success: () => {
+        wx.showModal({
+          title: '本机副本已复制',
+          content: '建议立即粘贴到备忘录或文档保存。仍要退出吗？仅保存在本机的内容将被清除。',
+          confirmText: '仍要退出',
+          confirmColor: theme.activeTokens()['--red'],
+          success: (result) => {
+            if (result.confirm) this.performLogout();
+            else this.finishLogoutAttempt(attempt);
+          },
+          fail: () => this.finishLogoutAttempt(attempt)
+        });
+      },
+      fail: copyFailed
+    });
+  },
+  confirmLogout(attempt) {
+    wx.showModal({
+      title: '退出当前账号？',
+      content: '退出会清除本机缓存、随记和记账草稿、搜索历史与临时跳转记录。已保存到账号的记录可在重新登录后查看。',
+      confirmColor: theme.activeTokens()['--amber'],
+      success: (result) => {
+        if (result.confirm) this.performLogout();
+        else this.finishLogoutAttempt(attempt);
+      },
+      fail: () => this.finishLogoutAttempt(attempt)
+    });
+  },
+  performLogout() {
+    this.__logoutAttempt = null;
+    sync.destroy();
+    store.resetLocal();
+    try { wx.removeStorageSync('wb_life_seeded'); } catch (e) { /* ignore */ }
+    api.clearLogin();
+    wx.reLaunch({ url: '/pages/login/login' });
   },
   editProfile() { wx.navigateTo({ url: '/pages/login/login?edit=1' }); },
   goLegal(event) {
     const doc = event.currentTarget.dataset.doc || 'service';
     wx.navigateTo({ url: '/pages/legal/legal?doc=' + encodeURIComponent(doc) });
-  },
-  goModule(event) {
-    const url = event.currentTarget.dataset.url;
-    if (url) wx.navigateTo({ url });
   }
 });

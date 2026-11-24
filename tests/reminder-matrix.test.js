@@ -12,7 +12,9 @@ const os = require('os');
 const path = require('path');
 const { FileStore } = require('../server/db/file-store');
 const { createApp } = require('../server/server');
-const { createReminderWorker, getReminderCapabilities } = require('../server/reminders');
+const { createReminderWorker, getReminderCapabilities, messageFor } = require('../server/reminders');
+
+const { sendSubscriptionMessage } = require('../server/wechat');
 
 const root = path.resolve(__dirname, '..');
 
@@ -63,7 +65,10 @@ function dayOfMonth(offsetDays = 0) {
   try { await store.addReminderCredit('u1', 'other', 1); } catch (error) { threw = error.message; }
   assert.ok(threw, '未知 kind 必须拒绝');
 
-  /* ---------- 习惯扫描：开启 + 额度>0 + 当日无打卡 才发一条，同日绝不重发 ---------- */
+  /* ---------- 习惯扫描：有未达标的排班习惯才发，同日绝不重发 ---------- */
+  for (const owner of ['u1', 'u2', 'u3', 'u4', 'u5', 'u7']) {
+    await store.upsert(owner, 'habit', 'h1', { kind: 'def', name: '散步', mode: 'check', target: 1 }, now, {});
+  }
   await store.upsert('u1', 'settings', 'app', { habitReminderEnabled: true, habitReminderTime: '00:00', billReminderEnabled: true }, now, {});
   assert.strictEqual(await store.scanHabitReminders(today, now), 1, '符合条件时必须生成一条习惯提醒');
   const habitReminder = await store.getLatestReminderForPlan('u1', 'habit:' + today);
@@ -72,11 +77,11 @@ function dayOfMonth(offsetDays = 0) {
   assert.strictEqual(await store.scanHabitReminders(today, now + 60000), 0, '同一天重复扫描绝不能重发');
   assert.strictEqual((await store.getLatestReminderForPlan('u1', 'habit:' + today)).id, habitReminder.id, '重复扫描必须复用同一条提醒');
 
-  // 当日已有打卡 entry：不发
+  // 当日全部达标：不发
   await store.upsert('u2', 'settings', 'app', { habitReminderEnabled: true, habitReminderTime: '00:00' }, now, {});
   await store.addReminderCredit('u2', 'habit', 1);
   await store.upsert('u2', 'habit', 'entry-u2', { kind: 'entry', habitId: 'h1', date: today, value: 1 }, now, {});
-  assert.strictEqual(await store.scanHabitReminders(today, now), 0, '当日已有打卡的用户必须跳过');
+  assert.strictEqual(await store.scanHabitReminders(today, now), 0, '当天所有排班习惯已达标时必须跳过');
 
   // 额度为 0：不发
   await store.upsert('u3', 'settings', 'app', { habitReminderEnabled: true, habitReminderTime: '00:00' }, now, {});
@@ -135,6 +140,44 @@ function dayOfMonth(offsetDays = 0) {
   assert.strictEqual((await store.getReminder(habitReminder.id)).status, 'sent', '习惯提醒发送后必须标记 sent');
   await worker.runOnce();
   assert.strictEqual(delivered.filter((message) => message.touser === 'u1').length, 2, '已发送的提醒不得重复投递');
+
+  const templateConfig = {
+    ...config,
+    reminderFields: {
+      plan: { title: 'thing5', when: 'date4' },
+      habit: { title: 'thing3', when: 'time2' },
+      bill: { title: 'thing1', when: 'time3' }
+    }
+  };
+  const dueAt = new Date(2026, 10, 23, 20, 30).getTime();
+  const sample = { ownerId: 'u1', title: '测试提醒', dueAt };
+  const planMessage = messageFor({ ...sample, planId: 'plan-demo' }, templateConfig);
+  assert.deepStrictEqual(planMessage.data, {
+    thing5: { value: '测试提醒' }, date4: { value: '2026-11-23 20:30:00' }
+  });
+  assert.deepStrictEqual(messageFor({ ...sample, planId: 'habit:2026-11-23' }, templateConfig).data, {
+    thing3: { value: '测试提醒' }, time2: { value: '2026-11-23 20:30' }
+  });
+  assert.deepStrictEqual(messageFor({ ...sample, planId: 'bill:account-1:2026-11-25' }, templateConfig).data, {
+    thing1: { value: '测试提醒' }, time3: { value: '2026年11月25日' }
+  });
+  const originalFetch = global.fetch;
+  let outgoing;
+  global.fetch = async (url, options) => {
+    const endpoint = new URL(url).pathname;
+    if (endpoint === '/cgi-bin/token') return { ok: true, json: async () => ({ access_token: 'mock-token' }) };
+    assert.strictEqual(endpoint, '/cgi-bin/message/subscribe/send');
+    outgoing = JSON.parse(options.body);
+    return { ok: true, json: async () => ({ errcode: 0 }) };
+  };
+  try {
+    await sendSubscriptionMessage(templateConfig, planMessage);
+    assert.strictEqual(outgoing.template_id, 'tpl-plan');
+    assert.strictEqual(outgoing.templateId, undefined);
+    assert.deepStrictEqual(outgoing.data, planMessage.data);
+  } finally {
+    global.fetch = originalFetch;
+  }
 
   /* ---------- 模板未配置时对应 kind 静默停用，不影响另一类 ---------- */
   assert.deepStrictEqual(getReminderCapabilities({ ...config, wxHabitReminderTemplateId: '' }), { enabled: true, templateId: 'tpl-plan' }, 'plan 能力查询结果不得回归');
@@ -304,6 +347,15 @@ function dayOfMonth(offsetDays = 0) {
     miniStore.state.records.settings.app = { id: 'app', data: { habitReminderEnabled: true }, updatedAt: 1, deletedAt: 0 };
     habitPage.render.call(habitPage);
     assert.match(habitPage.data.habitReminder.banner, /续订/, '额度耗尽时必须出现续订横幅');
+    assert.strictEqual(habitPage.data.habitReminder.state, 'exhausted', '额度耗尽是 exhausted 状态，不是「服务端不支持」');
+
+    // v2.12 U06：能力未查询到（离线/查询中）时不得谎报「服务端暂不支持」
+    miniStore.state.records.settings.app = { id: 'app', data: { habitReminderEnabled: true }, updatedAt: 1, deletedAt: 0 };
+    const reminderClient = require('../miniprogram/utils/reminder-client');
+    const unknownView = reminderClient.buildReminderView(miniStore.state.records, 'habit', null);
+    assert.strictEqual(unknownView.state, 'unknown', 'caps 未知的开启态必须是 unknown');
+    assert.match(unknownView.statusText, /查询中/, '能力未知时如实说查询中，不宣称不送达');
+    assert.strictEqual(unknownView.banner, '', '能力未知时不显示续订横幅');
 
     // money 页：还款提醒开关走 bill kind
     const moneyPage = makeMiniPage(loadMiniPage('miniprogram/pages/money/money.js'));

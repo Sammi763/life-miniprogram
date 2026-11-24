@@ -1,0 +1,3 @@
+.activity-record { overflow-wrap: anywhere; }
+.activity-record .sub { margin-top: 8rpx; }
+.activity-record .btn { margin: 14rpx 0 0; }

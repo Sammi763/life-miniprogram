@@ -142,7 +142,7 @@ async function main() {
     assert.strictEqual(unauthorized.status, 401);
 
     assert.match(fs.readFileSync(path.join(repoRoot, 'server', 'db', 'schema.sql'), 'utf8'), /CREATE TABLE IF NOT EXISTS users/i);
-    assert.doesNotMatch(fs.readFileSync(path.join(repoRoot, 'miniprogram', 'pages', 'login', 'login.wxml'), 'utf8'), /chooseAvatar/);
+    assert.match(fs.readFileSync(path.join(repoRoot, 'miniprogram', 'pages', 'login', 'login.wxml'), 'utf8'), /avatarEnabled[^>]*open-type="chooseAvatar"/);
     assert.match(fs.readFileSync(path.join(repoRoot, 'miniprogram', 'pages', 'login', 'login.wxml'), 'utf8'), /text-avatar/);
     assert.doesNotMatch(fs.readFileSync(path.join(repoRoot, 'miniprogram', 'pages', 'login', 'login.wxml'), 'utf8'), /getPhoneNumber|手机号|phoneCode/);
     assert.match(fs.readFileSync(path.join(repoRoot, 'miniprogram', 'pages', 'login', 'login.wxml'), 'utf8'), /重新登录/);

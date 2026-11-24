@@ -57,12 +57,13 @@ async function exchangeLoginCode(config, code) {
 
 async function sendSubscriptionMessage(config, message) {
   const accessToken = await getAccessToken(config);
+  const { templateId, ...payload } = message;
   return requestJson(
     'https://api.weixin.qq.com/cgi-bin/message/subscribe/send?access_token=' + encodeURIComponent(accessToken),
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(message)
+      body: JSON.stringify({ ...payload, template_id: templateId })
     },
     config.wxHttpTimeoutMs
   );

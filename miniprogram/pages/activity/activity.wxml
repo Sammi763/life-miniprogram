@@ -1,0 +1,25 @@
+<view class="theme-page" style="{{themeStyle}}">
+  <view class="card" wx:if="{{mode === 'reminders'}}">
+    <view class="card-title">订阅额度</view>
+    <view class="row"><text>习惯打卡</text><text>{{habitCredits}}</text></view>
+    <view class="row"><text>账单还款</text><text>{{billCredits}}</text></view>
+    <view class="row">
+      <button class="btn {{view === 'pending' ? 'btn-primary' : 'btn-ghost'}}" data-view="pending" bindtap="changeView" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">待发送</button>
+      <button class="btn {{view === 'history' ? 'btn-primary' : 'btn-ghost'}}" data-view="history" bindtap="changeView" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">历史</button>
+    </view>
+  </view>
+  <view class="card" wx:else><view class="card-title">最近删除</view><view class="sub">可恢复最近 30 天删除的随记。</view></view>
+  <view class="card" wx:if="{{error}}"><view class="sub">{{error}}</view><button class="btn btn-ghost" bindtap="reload" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">重试</button></view>
+  <view class="card sub" wx:elif="{{!loading && !rows.length}}">暂无记录</view>
+  <block wx:for="{{rows}}" wx:key="id">
+    <view wx:if="{{mode === 'deleted'}}" class="card activity-record">
+      <view>{{item.data.content}}</view><view class="sub">{{item.data.occurredAt}}</view>
+      <button class="btn btn-ghost" data-id="{{item.id}}" bindtap="restore" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">恢复</button>
+    </view>
+    <view wx:else class="card activity-record" data-kind="{{item.kind}}" data-id="{{item.planId}}" bindtap="openReminder" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90">
+      <view>{{item.title}}</view><view class="sub">{{item.time}} · {{item.statusText}}</view>
+    </view>
+  </block>
+  <view wx:if="{{loading}}" class="card sub">加载中…</view>
+  <button wx:if="{{next !== null && !loading}}" class="btn btn-ghost" bindtap="more" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">加载更多</button>
+</view>

@@ -31,11 +31,13 @@
 .habit-edit-row { display: flex; justify-content: flex-end; align-items: center; }
 /* 近 12 周热力图：12 列（周）× 7 行（周一至周日），纯 CSS 网格 */
 .habit-history { margin-top: 16rpx; }
-.habit-history-grid { display: flex; gap: 4rpx; overflow-x: auto; }
+.habit-history-grid { display: flex; gap: 2rpx; overflow-x: auto; }
 .habit-history-week { display: flex; flex-direction: column; gap: 4rpx; }
+/* U09：格子放大到 26rpx 并用透明 padding 扩触控区；精确补录仍以「补录」按钮的日期选择为主 */
 .habit-cell {
-  width: 22rpx; height: 22rpx; border-radius: 4rpx;
+  width: 26rpx; height: 26rpx; border-radius: 5rpx;
   background: var(--line); flex-shrink: 0;
+  padding: 6rpx; background-clip: content-box; border: 6rpx solid transparent; box-sizing: content-box;
 }
 .habit-cell.lv-1 { background: var(--terra-soft); }
 .habit-cell.lv-2 { background: var(--terra); opacity: 0.55; }
@@ -51,3 +53,8 @@
 .sheet-delete { margin-top: 8rpx; padding: 22rpx 0 8rpx; text-align: center; color: var(--red); font-size: 26rpx; }
 /* 打卡提醒卡的续订横幅（额度耗尽时出现） */
 .reminder-banner { margin-top: 4rpx; padding: 18rpx 22rpx; border-radius: 16rpx; background: var(--warn-soft); color: var(--amber); font-size: 26rpx; }
+
+.habit-schedule { margin: 18rpx 0; }
+.habit-weekdays { margin-top: 10rpx; }
+.habit-cell.is-rest { box-sizing: border-box; background: transparent; border: 1rpx solid var(--line); }
+.habit-cell.is-selected { outline: 2rpx solid var(--ink); outline-offset: 2rpx; }

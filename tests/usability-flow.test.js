@@ -127,38 +127,45 @@ async function main() {
     assert.strictEqual(loginPage.data.loginStatus, '', 'final failure replaces transient retry status');
     assert.ok(events.includes('loading:hide'), 'loading indicator must always be hidden after failure');
 
+    let profileUpdates = 0;
+    api.updateProfile = () => { profileUpdates++; return Promise.reject(new Error('offline')); };
     loginPage.onLogin.call(loginPage);
     await tick();
     assert.strictEqual(attempts, 2, 'a second button click must start a new login');
-    assert.strictEqual(loginPage.data.loggedIn, true);
+    assert.strictEqual(loginPage.data.entering, true);
     assert.strictEqual(loginPage.data.loggingIn, false);
     assert.strictEqual(loginPage.data.loginFailed, false);
-    loginPage.completeProfile.call(loginPage);
-    await tick();
+    assert.strictEqual(profileUpdates, 0, '首登不依赖资料更新请求');
     assert.ok(events.includes('tab:/pages/today/today'), 'an empty optional nickname must continue to the home page');
 
     const loginTemplate = fs.readFileSync(path.join(root, 'miniprogram/pages/login/login.wxml'), 'utf8');
     const mineTemplate = fs.readFileSync(path.join(root, 'miniprogram/pages/mine/mine.wxml'), 'utf8');
     assert.doesNotMatch(loginTemplate + mineTemplate, /getPhoneNumber|手机号|phoneCode|hasPhone/);
-    assert.match(loginTemplate, /昵称可留空跳过/);
+    assert.match(loginTemplate, /昵称可以留空/);
 
     // 预算与健身设置共用 settings.app，保存预算不能覆盖身高和目标体重。
+    // v2.12 U05：预算编辑已迁回「记账」页（money.saveBudget），「我的」页不再有预算输入。
     const upserts = [];
     sync.upsert = (...args) => upserts.push(args);
     store.state.records.settings = {
       app: { id: 'app', data: { height: 175, targetWeight: 65, budget: 3000 }, updatedAt: 1, deletedAt: 0 }
     };
-    const mine = makePage(loadPage('miniprogram/pages/mine/mine.js'));
-    mine.data.budgetInput = '5200.50';
-    mine.saveBudget.call(mine);
+    const money = makePage(loadPage('miniprogram/pages/money/money.js'));
+    money.setData({ budgetForm: { main: '5200.50', rows: [] } });
+    money.saveBudget.call(money);
     assert.deepStrictEqual(upserts.pop(), [
       'settings',
       { height: 175, targetWeight: 65, budget: 5200.5 },
       'app'
-    ], '保存预算必须保留已有个人设置');
+    ], '保存预算必须保留已有个人设置（预算编辑器在记账页）');
+    const mineTemplate2 = fs.readFileSync(path.join(root, 'miniprogram/pages/mine/mine.wxml'), 'utf8');
+    assert.ok(!/saveBudget/.test(mineTemplate2), '「我的」页不得再有预算编辑入口（U05 已迁回记账）');
 
     // 编辑习惯要复用原定义 id，才能保留历史打卡记录。
     const habit = makePage(loadPage('miniprogram/pages/habit/habit.js'));
+    store.state.records.habit['habit-reading'] = {
+      id: 'habit-reading', data: { kind: 'def', name: '阅读', mode: 'count', target: 20, unit: '分钟' }, updatedAt: 1
+    };
     habit.data.form = { id: 'habit-reading', name: '阅读', mode: 'count', target: '30', unit: '分钟' };
     habit.save.call(habit);
     const habitWrite = upserts.pop();

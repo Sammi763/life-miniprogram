@@ -136,7 +136,7 @@ function makePage(definition) {
     const tapEvent = (kind) => ({ currentTarget: { dataset: { kind, id: 'x1' } } });
     today.onRecentTap.call(today, tapEvent('money'));
     assert.ok(events.includes('tab:/pages/money/money'), 'money 行必须 switchTab 到记账页');
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(storage[pendingOpen.PENDING_OPEN_KEY])), { kind: 'money', id: 'x1', at: storage[pendingOpen.PENDING_OPEN_KEY].at }, 'money 行必须写入 pending-open 中转意图');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(storage[pendingOpen.PENDING_OPEN_KEY])), { kind: 'money', id: 'x1', action: '', at: storage[pendingOpen.PENDING_OPEN_KEY].at }, 'money 行必须写入 pending-open 中转意图（浏览入口不带 action）');
 
     today.onRecentTap.call(today, tapEvent('memory'));
     assert.ok(events.includes('nav:/pages/memory/memory?id=x1'), 'memory 行必须跳随记页');
@@ -162,7 +162,7 @@ function makePage(definition) {
     const searchPage = makePage(loadPage('miniprogram/pages/search/search.js'));
     searchPage.data.results = [{ id: 'ss-1', kind: 'money', title: '午饭' }];
     searchPage.openResult.call(searchPage, { currentTarget: { dataset: { kind: 'money', id: 'ss-1' } } });
-    assert.deepStrictEqual(JSON.parse(JSON.stringify(storage[pendingOpen.PENDING_OPEN_KEY])), { kind: 'money', id: 'ss-1', at: storage[pendingOpen.PENDING_OPEN_KEY].at }, '搜索页必须经 pending-open 写入同一中转键');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(storage[pendingOpen.PENDING_OPEN_KEY])), { kind: 'money', id: 'ss-1', action: pendingOpen.ACTIONS.SEARCH, at: storage[pendingOpen.PENDING_OPEN_KEY].at }, '搜索页必须经 pending-open 写入同一中转键');
     assert.ok(events.includes('tab:/pages/money/money'), '搜索页 money 结果必须 switchTab');
 
     const moneyPage = makePage(loadPage('miniprogram/pages/money/money.js'));
@@ -170,6 +170,7 @@ function makePage(definition) {
     moneyPage.openEditById = (id) => { openedEdit = id; };
     moneyPage.consumePendingOpen();
     assert.strictEqual(openedEdit, 'ss-1', 'money onShow 必须消费中转意图并打开对应流水');
+    assert.strictEqual(moneyPage.data.returnSearch, true, '从搜索进入时保留返回入口');
 
     // ---- wxml 结构：tap 事件 + 按压反馈 ----
     const wxml = fs.readFileSync(path.join(root, 'miniprogram/pages/today/today.wxml'), 'utf8');

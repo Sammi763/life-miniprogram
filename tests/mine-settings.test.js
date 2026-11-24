@@ -39,7 +39,10 @@ assert.ok(sheetBlock.length > 0, '应能定位到数据管理弹层');
 /* ---------- 1. 一级行数收口：v2.10 三行 + v2.11 提醒设置（弹层入口，不新增页面） ---------- */
 
 const settingsRowCount = (settingsBlock.match(/class="setting-row/g) || []).length;
-assert.strictEqual(settingsRowCount, 4, '「数据与隐私」一级只应有 4 行（AI / 合规 / 数据管理 / 提醒设置），实际 ' + settingsRowCount + ' 行');
+/* v2.12 U03：主题收纳为一行入口并入设置卡（原整卡主题网格移除），共 5 行 */
+assert.strictEqual(settingsRowCount, 5, '「设置」一级应有 5 行（主题 / AI / 提醒设置 / 合规 / 数据管理），实际 ' + settingsRowCount + ' 行');
+assert.ok(/bindtap="openThemeSheet"/.test(settingsBlock), '主题必须收纳为一行弹层入口（U03）');
+assert.ok(!/class="theme-grid"/.test(settingsBlock), '主题网格不得再占据设置卡正文（改为弹层）');
 
 assert.ok(/<switch[^>]*bindchange="onAiConsentChange"/.test(settingsBlock), '「个性化 AI 文案」开关必须留在一级（它是唯一决定数据是否离开本机的开关）');
 assert.ok(/class="setting-row[^"]*"[^>]*bindtap="goLegal"/.test(settingsBlock), '合规入口必须留在一级');

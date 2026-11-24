@@ -14,3 +14,8 @@
 .search-kind { color:var(--accent); background:var(--accent-soft); border-radius:999rpx; padding:4rpx 12rpx; font-size:22rpx; }.search-title { color:var(--ink); font-size:29rpx; margin-bottom:8rpx; }
 /* 关键词命中高亮 */
 .search-hit { color:var(--accent); font-weight:700; background:var(--accent-soft); border-radius:6rpx; padding:0 2rpx; }
+
+/* U07：结果分批「加载更多」入口 */
+.search-more { text-align: center; color: var(--terra); font-size: 26rpx; padding: 22rpx 0; }
+
+.search-date-filters { margin-bottom: 20rpx; }

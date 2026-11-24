@@ -25,7 +25,7 @@ function buildMoneyCsv(moneyRecords) {
         data.date,
         type,
         category,
-        formatMoney(Number(data.amount) || 0),
+        formatMoney(data.amount),
         data.note || ''
       ].map(escapeField).join(',');
     });

@@ -20,6 +20,7 @@ function getRuntimeConfig() {
   return {
     envVersion,
     isProduction,
+    aiConsentKey: envVersion === 'trial' ? 'trialAiConsent' : envVersion === 'develop' ? 'aiConsent' : '',
     apiBaseUrl: (isProduction ? PRODUCTION_API_BASE_URL : DEVELOPMENT_API_BASE_URL).replace(/\/+$/, ''),
     allowServerOverride: !isProduction,
     apiConfigured: !isProduction || Boolean(PRODUCTION_API_BASE_URL)

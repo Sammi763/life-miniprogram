@@ -39,6 +39,8 @@ function saveProfile(profile) {
 }
 
 function clearLogin() {
+  if (typeof wx !== 'undefined') require('./avatar').clear();
+  require('./search-return').clearSavedSearch();
   try {
     wx.removeStorageSync(TOKEN_KEY);
     wx.removeStorageSync(PROFILE_KEY);
@@ -276,7 +278,10 @@ function validateSession() {
   const token = getToken();
   if (!token) return Promise.reject(new Error('not_logged_in'));
   return doRequestWithRetry('GET', '/api/profile', undefined, token, 'profile_read', REQUEST_MAX_RETRIES)
-    .then((result) => saveProfile(result.profile || {}))
+    .then((result) => {
+      if (token !== getToken()) throw new Error('session_changed');
+      return saveProfile(result.profile || {});
+    })
     .catch((error) => {
       if (error.statusCode === 401) clearLogin();
       throw error;
@@ -313,10 +318,21 @@ function updateProfile(patch) {
     .then((result) => saveProfile(result.profile || {}));
 }
 
-const apiSync = (since) => request('GET', '/api/sync?since=' + encodeURIComponent(since));
-const apiPut = (collection, id, data, updatedAt, createOnly) =>
-  requestIdempotent('PUT', '/api/records/' + collection + '/' + encodeURIComponent(id),
-    createOnly ? { data, updatedAt, createOnly: true } : { data, updatedAt }, 'record_write');
+/*
+ * 增量拉取参数：since 是 legacy 时间戳游标（旧服务端兼容），sinceSeq 是服务端变更序号游标（R03）。
+ * 两个参数都发：新服务端优先按 sinceSeq 返回并在响应中带 cursor；旧服务端只读 since。
+ */
+const apiSync = (since, sinceSeq, generation) => {
+  const params = [];
+  if (since !== undefined && since !== null) params.push('since=' + encodeURIComponent(since));
+  if (sinceSeq !== undefined && sinceSeq !== null) params.push('sinceSeq=' + encodeURIComponent(sinceSeq));
+  if (typeof generation === 'string') params.push('generation=' + encodeURIComponent(generation));
+  return request('GET', '/api/sync' + (params.length ? '?' + params.join('&') : ''));
+};
+const apiPut = (collection, id, data, updatedAt, createOnly, replacesDeletedAt) =>
+  requestIdempotent('PUT', '/api/records/' + collection + '/' + encodeURIComponent(id), {
+    data, updatedAt, ...(createOnly && { createOnly: true }), ...(replacesDeletedAt && { replacesDeletedAt })
+  }, 'record_write');
 const apiDelete = (collection, id, updatedAt) =>
   requestIdempotent('DELETE', '/api/records/' + collection + '/' + encodeURIComponent(id) + '?updatedAt=' + updatedAt, undefined, 'record_delete');
 
@@ -338,7 +354,10 @@ function cancelReminder(planId) {
 }
 
 function getInsight(scope, period) {
-  const query = '?scope=' + encodeURIComponent(scope || 'today') + (period ? '&month=' + encodeURIComponent(period) : '');
+  const { envVersion, aiConsentKey } = runtime.getRuntimeConfig();
+  if (!aiConsentKey) return Promise.reject(new Error('ai_unavailable'));
+  const channel = envVersion === 'trial' ? '&channel=trial' : '';
+  const query = '?scope=' + encodeURIComponent(scope || 'today') + (period ? '&month=' + encodeURIComponent(period) : '') + channel;
   return request('GET', '/api/insights' + query);
 }
 
@@ -385,7 +404,7 @@ function deleteAccount() {
 }
 
 module.exports = {
-  getBaseUrl, setBaseUrl, getToken, getProfile, clearLogin, login, validateSession, checkHealth,
+  getBaseUrl, setBaseUrl, getToken, getProfile, saveProfile, clearLogin, login, validateSession, checkHealth,
   updateProfile, ensureLogin, request, apiSync, apiPut, apiDelete,
   getReminderCapabilities, addReminderCredit, scheduleReminder, cancelReminder,
   requestReminderSubscription, requirePrivacyAuthorization, openPrivacyContract,

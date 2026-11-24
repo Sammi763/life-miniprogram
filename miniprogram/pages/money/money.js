@@ -1,3 +1,4 @@
+const { toCents, fromCents, parseMoneyInput, amountError, moneyInputText } = require('../../utils/amount');
 const store = require('../../utils/store');
 const sync = require('../../utils/sync');
 const ui = require('../../utils/ui');
@@ -6,31 +7,42 @@ const {
   INCOME_CATEGORIES: CAT_IN,
   ACCOUNT_PRESETS,
   accountInitials,
-  roundMoney,
   formatMoney
 } = require('../../utils/finance');
 const { buildBillAlerts, calculateAccountBalances } = require('../../utils/ledger-utils');
 const categoryUtils = require('../../utils/category-utils');
-const { consumePendingOpen: consumePendingOpenStorage } = require('../../utils/pending-open');
+const { pickSettings } = require('../../utils/settings-utils');
+const { consumePendingAction, ACTIONS } = require('../../utils/pending-open');
+const { returnToSearch } = require('../../utils/search-return');
 const reminderClient = require('../../utils/reminder-client');
 const { syncTabBar, attachOverlayWatcher, TAB } = require('../../utils/tabbar');
 const theme = require('../../utils/theme');
 const share = require('../../utils/share');
 
 const TRANSFER_CATEGORY = '账户转账';
+const UNLINKED = ':unlinked';
+const TYPE_FILTERS = [
+  { id: '', name: '全部类型' }, { id: 'expense', name: '支出' },
+  { id: 'income', name: '收入' }, { id: 'transfer', name: '转账' }
+];
+
+function matchesAccount(item, filter) {
+  if (!filter) return true;
+  if (filter === UNLINKED) return !item.accountId;
+  return item.accountId === filter || item.toAccountId === filter;
+}
 /*
  * 列表分批渲染：流水多的月份一次性把全部日期分组 setData 会撑大单次数据量。
  * 这里按「日期分组数」分批下发，月汇总、分类 chips、月历与角标始终按全月计算，
  * 只裁剪列表视图的 groups 载荷（与随记时间线 v2.6 同一模式）。
+ * 同时限制记录条数预算：单日记录特别多时首批也不会被撑大（性能方案 §5）。
  */
 const MONEY_LIST_PAGE_GROUPS = 10;
+const MONEY_LIST_PAGE_ITEMS = 120;
 
-function parseMoneyInput(value) {
-  const source = String(value === undefined || value === null ? '' : value).trim();
-  if (source === '') return 0;
-  const amount = Number(source);
-  return Number.isFinite(amount) ? roundMoney(amount) : NaN;
-}
+const RECENT_KEY = 'wb_life_money_recent';
+const FORM_DRAFT_KEY = 'wb_life_money_form_draft';
+
 function activeRecords(records) { return Object.values(records || {}).filter((record) => record && !record.deletedAt && record.data); }
 function accountForm() {
   return {
@@ -41,6 +53,18 @@ function accountForm() {
 function transactionForm(date) {
   return { id: '', type: 'expense', amount: '', category: CAT_OUT[0], date, note: '', accountId: '', toAccountId: '', accountIndex: 0, toAccountIndex: 0, accountName: '不关联账户', toAccountName: '请选择转入账户' };
 }
+function readJsonKey(key) {
+  try {
+    const raw = wx.getStorageSync(key);
+    return raw && typeof raw === 'object' ? raw : null;
+  } catch (error) { return null; }
+}
+function writeJsonKey(key, value) {
+  try { wx.setStorageSync(key, value); return true; } catch (error) { return false; }
+}
+function removeKey(key) {
+  try { wx.removeStorageSync(key); } catch (error) { /* ignore */ }
+}
 
 Page({
   data: {
@@ -48,6 +72,9 @@ Page({
     month: '', monthText: '',
     sumIn: 0, sumOut: 0, sumTransfer: 0,
     filter: '', filters: [], groups: [],
+    accountFilter: '', typeFilter: '',
+    filterAccounts: [], filterCategories: [], filterTypes: TYPE_FILTERS,
+    hasFilters: false, returnSearch: false,
     hasMore: false, groupTotal: 0,
     accounts: [],
     accountOverview: { assetTotal: 0, liabilityTotal: 0, netAssets: 0, assetCount: 0, liabilityCount: 0, accountCount: 0 },
@@ -73,31 +100,54 @@ Page({
     calendarWeeks: [],
     dayFilter: '',
     /* 还款提醒（v2.11 提醒矩阵）：开关写 settings；额度耗尽显示续订横幅 */
-    billReminder: { enabled: false, capEnabled: false, credits: 0, time: '', banner: '' }
+    billReminder: { enabled: false, capEnabled: false, credits: 0, time: '', state: 'off', statusText: '未开启', banner: '' },
+    /* U04：资产/账户管理默认折叠，主界面突出月收支与流水 */
+    accountsExpanded: false,
+    /* U01：新增时聚焦金额输入框 */
+    focusAmount: false,
+    /* U05 预算编辑器（自「我的」页迁回）：R04 草稿隔离 —— 编辑中不被后台刷新覆盖 */
+    budgetSheetShow: false,
+    budgetEditing: false,
+    budgetRemoteChanged: false,
+    budgetForm: { main: '', rows: [] }
   },
   unsub: null,
   /* 最近一次能力查询结果，onShow 刷新 */
   reminderCaps: null,
   /* 已下发的日期分组数上限；只在筛选/切月/切视图时回到首批，同步拉取不重置它 */
   visibleGroups: MONEY_LIST_PAGE_GROUPS,
+  /* 已下发的记录条数预算：单日记录特别多时首批也不会被撑大 */
+  visibleItems: MONEY_LIST_PAGE_ITEMS,
+  openBills(event) {
+    const id = event && event.currentTarget.dataset.id;
+    wx.navigateTo({ url: '/pages/bills/bills' + (id ? '?repay=' + encodeURIComponent(id) : '') });
+  },
+  openCategoryDetails(event) {
+    const category = event && event.currentTarget.dataset.category;
+    wx.navigateTo({ url: '/pages/categories/categories?month=' + this.data.month + (category ? '&category=' + encodeURIComponent(category) : '') });
+  },
   onLoad() {
-    theme.applyToPage(this);
     // 弹层打开时隐藏悬浮导航：自定义 tabBar 压在页面之上，「保存」按钮会被它盖住（详见 utils/tabbar.js）
     attachOverlayWatcher(this);
-    this.unsub = store.subscribe(() => this.render());
-    this.setData({ month: sync.fmtDate(new Date()).slice(0, 7) });
-    this.render();
+    this.unsub = ui.bindStore(this, ['money', 'accounts', 'settings', '__sync__'],
+      () => this.render(),
+      () => this.renderSyncState());
   },
-  onShow() {
-    theme.applyToPage(this); share.enableShareMenu(); syncTabBar(this, TAB.MONEY); this.render();
+  onShow() { this.__pageHidden = false; theme.applyToPage(this); share.enableShareMenu(); syncTabBar(this, TAB.MONEY); this.render();
     this.consumePendingOpen();
     this.refreshReminderCaps();
   },
   onShareAppMessage: share.onShareAppMessage('money'),
   onShareTimeline: share.onShareTimeline('money'),
+  onHide() { this.__pageHidden = true; },
   onUnload() {
+    this.__pageHidden = true;
     this.unsub && this.unsub();
     clearTimeout(this.__undoTimer);
+  },
+  /* 同步状态变化只更新状态横幅，不做整页重算（性能方案 §5） */
+  renderSyncState() {
+    ui.diffSetData(this, { offline: store.state.syncState === 'offline' });
   },
   retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() { sync.pull().then(() => wx.stopPullDownRefresh()).catch(() => wx.stopPullDownRefresh()); },
@@ -105,51 +155,96 @@ Page({
     const caps = await reminderClient.fetchCaps();
     if (!caps) return;
     this.reminderCaps = caps;
-    this.render();
+    if (this.__pageHidden) return;
+    ui.diffSetData(this, { billReminder: reminderClient.buildReminderView(store.state.records, 'bill', caps) });
   },
 
-  render() {
-    const state = store.state;
-    const month = this.data.month || sync.fmtDate(new Date()).slice(0, 7);
-    const ledger = calculateAccountBalances(state.records.accounts || {}, state.records.money || {});
+  computeLedgerModel(month) {
+    const { money, accounts } = store.state.records;
+    const key = [month, store.version('money'), store.version('accounts')].join('|');
+    const cached = this.__ledgerModel;
+    if (cached && cached.key === key && cached.money === money && cached.accounts === accounts) return cached.model;
+    const ledger = calculateAccountBalances(accounts, money);
     const accountNames = Object.fromEntries(ledger.list.map((account) => [account.id, account.name]));
     let sumIn = 0;
     let sumOut = 0;
     let sumTransfer = 0;
-    const byCat = {};
+    const byCat = new Set();
+    const referencedAccounts = new Set();
     const byDate = {};
-    activeRecords(state.records.money).forEach((record) => {
+    activeRecords(money).forEach((record) => {
       const data = record.data;
-      const amount = Number(data.amount) || 0;
-      if (String(data.date || '').slice(0, 7) !== month || !(amount > 0)) return;
-      if (data.type === 'income') sumIn += amount;
-      if (data.type === 'expense') {
-        sumOut += amount;
-        byCat[data.category || '其他'] = (byCat[data.category || '其他'] || 0) + amount;
-      }
-      if (data.type === 'transfer') sumTransfer += amount;
+      const cents = toCents(data.amount);
+      if (String(data.date || '').slice(0, 7) !== month || !(cents > 0)) return;
+      if (data.type === 'income') sumIn += cents;
+      if (data.type === 'expense') sumOut += cents;
+      if (data.type === 'transfer') sumTransfer += cents;
       const type = ['income', 'expense', 'transfer'].includes(data.type) ? data.type : 'expense';
-      const accountText = type === 'transfer'
-        ? (accountNames[data.accountId] || '未关联账户') + ' → ' + (accountNames[data.toAccountId] || '未关联账户')
-        : (accountNames[data.accountId] || '未关联账户');
+      const category = type === 'transfer' ? TRANSFER_CATEGORY : (data.category || '其他');
+      byCat.add(category);
+      const accountId = data.accountId || '';
+      const toAccountId = type === 'transfer' ? data.toAccountId || '' : '';
+      if (accountId) referencedAccounts.add(accountId);
+      if (toAccountId) referencedAccounts.add(toAccountId);
+      const accountName = (id) => accountNames[id] || (id ? '已移除账户' : '未关联账户');
+      const accountText = type === 'transfer' ? accountName(accountId) + ' → ' + accountName(toAccountId) : accountName(accountId);
       (byDate[data.date] || (byDate[data.date] = [])).push({
-        id: record.id, type, amount, amountText: formatMoney(amount),
-        category: type === 'transfer' ? TRANSFER_CATEGORY : (data.category || '其他'),
+        id: record.id, type, cents, amount: fromCents(cents), amountText: formatMoney(data.amount),
+        category, accountId, toAccountId,
         note: data.note || '', accountText, amountPrefix: type === 'income' ? '+' : type === 'expense' ? '-' : '↔'
       });
     });
     const groups = Object.keys(byDate).sort((a, b) => b.localeCompare(a)).map((date) => {
       const items = byDate[date].sort((a, b) => b.id.localeCompare(a.id));
-      const dayOut = items.filter((item) => item.type === 'expense').reduce((sum, item) => sum + item.amount, 0);
-      return { date, dayOut: roundMoney(dayOut), items };
+      const dayOut = items.filter((item) => item.type === 'expense').reduce((sum, item) => sum + item.cents, 0);
+      return { date, dayOut: fromCents(dayOut), items };
     });
-    const filters = Object.keys(byCat).sort((a, b) => byCat[b] - byCat[a]).slice(0, 8);
-    let shown = this.data.filter ? groups.map((group) => ({ ...group, items: group.items.filter((item) => item.type === 'expense' && item.category === this.data.filter) })).filter((group) => group.items.length) : groups;
-    /* 月历视图：按日支出合计；从月历点某天会切回列表并过滤到当天（dayFilter） */
-    if (this.data.dayFilter) shown = shown.filter((group) => group.date === this.data.dayFilter);
-    /* 分批：只裁剪列表载荷；月历视图（calendarWeeks）仍用全月分组构建，不受影响 */
+    const filters = Array.from(byCat).sort((a, b) => a.localeCompare(b, 'zh-Hans-CN'));
+    const model = {
+      ledger, sumIn: fromCents(sumIn), sumOut: fromCents(sumOut), sumTransfer: fromCents(sumTransfer),
+      groups, filters, referencedAccounts
+    };
+    this.__ledgerModel = { key, money, accounts, model };
+    return model;
+  },
+
+  render() {
+    const state = store.state;
+    const month = this.data.month || sync.fmtDate(new Date()).slice(0, 7);
+    const { ledger, sumIn, sumOut, sumTransfer, groups, filters, referencedAccounts } = this.computeLedgerModel(month);
+    const { filter, accountFilter, typeFilter, dayFilter } = this.data;
+    const hasFilters = Boolean(filter || accountFilter || typeFilter || dayFilter);
+    const hasItemFilters = Boolean(filter || accountFilter || typeFilter);
+    const totals = { expense: 0, income: 0, transfer: 0 };
+    const shown = [];
+    let shownItems = 0;
+    for (const group of groups) {
+      if (dayFilter && group.date !== dayFilter) continue;
+      const items = hasItemFilters ? group.items.filter((item) =>
+        (!filter || item.category === filter) && (!typeFilter || item.type === typeFilter) &&
+        matchesAccount(item, accountFilter)) : group.items;
+      if (!items.length) continue;
+      let dayExpenseCents = 0;
+      if (hasFilters) {
+        for (const item of items) {
+          const cents = item.cents;
+          totals[item.type] += cents;
+          if (item.type === 'expense') dayExpenseCents += cents;
+        }
+      }
+      shown.push(hasItemFilters ? { ...group, items, dayOut: dayExpenseCents / 100 } : group);
+      shownItems += items.length;
+    }
     const visibleGroups = Math.max(MONEY_LIST_PAGE_GROUPS, Number(this.visibleGroups) || 0);
-    const listGroups = shown.slice(0, visibleGroups);
+    const itemBudget = Math.max(MONEY_LIST_PAGE_ITEMS, Number(this.visibleItems) || 0);
+    const listGroups = [];
+    let usedItems = 0;
+    for (const group of shown) {
+      if (listGroups.length >= visibleGroups || usedItems >= itemBudget) break;
+      const items = group.items.slice(0, itemBudget - usedItems);
+      usedItems += items.length;
+      listGroups.push(items.length === group.items.length ? group : { ...group, items });
+    }
     const calendarWeeks = this.data.viewMode === 'calendar' ? this.buildCalendarGroups(month, groups) : this.data.calendarWeeks;
     /* 分类管理弹层打开时，行数据（含引用数）随每次渲染刷新 */
     const catRows = this.data.catSheetShow
@@ -164,17 +259,49 @@ Page({
       billText: account.kind === 'liability' && account.currentBill > 0 ? '本期应还 ¥' + formatMoney(account.currentBill) : ''
     }));
     const accountOptions = [{ id: '', name: '不关联账户' }].concat(ledger.list.map((account) => ({ id: account.id, name: account.name, kind: account.kind })));
+    const filterAccounts = [{ id: '', name: '全部账户' }, { id: UNLINKED, name: '未关联账户' }, ...accountOptions.slice(1)];
+    const accountIds = new Set(filterAccounts.map((account) => account.id));
+    for (const id of new Set([...referencedAccounts, accountFilter])) {
+      if (accountIds.has(id)) continue;
+      const previous = state.records.accounts[id];
+      const name = previous && previous.data && previous.data.name;
+      filterAccounts.push({ id, name: name ? name + '（已移除）' : '已移除账户 · ' + id.slice(-6) });
+    }
+    const categories = filter && !filters.includes(filter) ? filters.concat(filter) : filters;
+    const filterCategories = ['全部分类', ...categories];
     const [year, number] = month.split('-');
-    this.setData({
+    ui.diffSetData(this, {
       month, monthText: year + ' 年 ' + Number(number) + ' 月',
-      sumIn: roundMoney(sumIn), sumOut: roundMoney(sumOut), sumTransfer: roundMoney(sumTransfer),
+      sumIn, sumOut, sumTransfer,
       sumInText: formatMoney(sumIn), sumOutText: formatMoney(sumOut), sumTransferText: formatMoney(sumTransfer),
-      filters, groups: listGroups, groupTotal: shown.length, hasMore: shown.length > listGroups.length,
+      /* hasMore 同时看组数与条数预算：单日记录超过条数预算时组数虽尽、条目仍有截断（审查修复） */
+      filters, groups: listGroups, groupTotal: shown.length, hasMore: shown.length > listGroups.length || usedItems < shownItems,
+      filterAccounts, filterCategories, hasFilters, shownItems, usedItems,
+      filterAccountIndex: Math.max(0, filterAccounts.findIndex((item) => item.id === accountFilter)),
+      filterTypeIndex: Math.max(0, TYPE_FILTERS.findIndex((item) => item.id === typeFilter)),
+      filterCategoryIndex: filter ? categories.indexOf(filter) + 1 : 0,
+      filteredInText: formatMoney(totals.income / 100),
+      filteredOutText: formatMoney(totals.expense / 100),
+      filteredTransferText: formatMoney(totals.transfer / 100),
       accounts, accountOverview: ledger.overview,
       billAlerts: buildBillAlerts(state.records.accounts || {}, state.records.money || {}, new Date()),
       accountOptions, transferAccounts: ledger.list.map((account) => ({ id: account.id, name: account.name, kind: account.kind })),
       offline: state.syncState === 'offline',
+      /* R04：预算编辑器打开时，后台刷新只更新只读区域，不得覆盖未保存输入 */
+      ...(this.data.budgetEditing && this.__budgetEditBase
+        ? (() => {
+            const remoteUpdatedAt = (state.records.settings['app'] && state.records.settings['app'].updatedAt) || 0;
+            return remoteUpdatedAt > this.__budgetEditBase.updatedAt && !this.data.budgetRemoteChanged
+              ? { budgetRemoteChanged: true }
+              : {};
+          })()
+        : {}),
       billReminder: reminderClient.buildReminderView(state.records, 'bill', this.reminderCaps),
+      budgetText: (() => {
+        const record = state.records.settings['app'];
+        const data = record && !record.deletedAt && record.data || {};
+        return data.budget ? formatMoney(data.budget) : '';
+      })(),
       catRows,
       calendarWeeks
     });
@@ -259,10 +386,11 @@ Page({
   onReachBottom() { if (this.data.viewMode === 'list' && this.data.hasMore) this.loadMore(); },
   loadMore() {
     this.visibleGroups = (Number(this.visibleGroups) || MONEY_LIST_PAGE_GROUPS) + MONEY_LIST_PAGE_GROUPS;
+    this.visibleItems = (Number(this.visibleItems) || MONEY_LIST_PAGE_ITEMS) + MONEY_LIST_PAGE_ITEMS;
     this.render();
   },
   /* 筛选/切月/切视图时回到首批，避免「换了条件却还停在很深的页码」 */
-  resetListPage() { this.visibleGroups = MONEY_LIST_PAGE_GROUPS; },
+  resetListPage() { this.visibleGroups = MONEY_LIST_PAGE_GROUPS; this.visibleItems = MONEY_LIST_PAGE_ITEMS; },
   shiftMonth(offset) {
     const [year, month] = this.data.month.split('-').map(Number);
     const target = new Date(year, month - 1 + offset, 1);
@@ -270,12 +398,109 @@ Page({
     this.resetListPage();
     this.render();
   },
+  selectAccountFilter(event) {
+    const option = this.data.filterAccounts[Number(event.detail.value)];
+    if (option) this.updateFilters({ accountFilter: option.id });
+  },
+  selectTypeFilter(event) {
+    const option = TYPE_FILTERS[Number(event.detail.value)];
+    if (option) this.updateFilters({ typeFilter: option.id });
+  },
   setFilter(event) {
-    this.setData({ filter: event.currentTarget.dataset.cat === this.data.filter ? '' : event.currentTarget.dataset.cat });
+    const index = event.detail && event.detail.value;
+    const category = index === undefined
+      ? event.currentTarget.dataset.cat
+      : Number(index) && this.data.filterCategories[Number(index)];
+    this.updateFilters({ filter: category || '' });
+  },
+  clearFilters() {
+    this.updateFilters({ filter: '', typeFilter: '', accountFilter: '', dayFilter: '' });
+  },
+  updateFilters(patch) {
+    this.setData(patch);
     this.resetListPage();
     this.render();
   },
   goReport() { wx.navigateTo({ url: '/pages/report/report' }); },
+  /* U04：资产/账户卡片默认折叠，一行概览 + 展开按钮 */
+  toggleAccounts() { this.setData({ accountsExpanded: !this.data.accountsExpanded }); },
+
+  // ---- 预算编辑器（U05，自「我的」迁回记账）：分类来自支出分类配置（含任意自定义分类） ----
+  /*
+   * 打开编辑器时对 settings 打快照（R04 草稿隔离）：
+   * 编辑期间 render() 不回写 budgetForm（后台同步/其他记录变化不得覆盖未保存输入）；
+   * 若其他设备更新了 settings，横幅提示「其他设备已更新」，保存仍以用户输入为准。
+   */
+  buildBudgetRows(settings) {
+    const budgets = settings.categoryBudgets && typeof settings.categoryBudgets === 'object' ? settings.categoryBudgets : {};
+    const hidden = Array.isArray(settings.hiddenCategories) ? settings.hiddenCategories : [];
+    const isHidden = (name) => hidden.some((item) => (item && item.name === name && item.type === 'expense') || item === name);
+    const rows = categoryUtils.buildCategoryList(store.state.records.settings['app'], store.state.records.money, { type: 'expense' })
+      .map((key) => ({ key, value: budgets[key] === undefined ? '' : String(budgets[key]), hiddenSuffix: isHidden(key) ? '（已隐藏）' : '' }));
+    // 配置过预算但已不在分类列表里的（如删除的自定义分类）也要出现，避免预算静默丢失
+    for (const key of Object.keys(budgets)) {
+      if (!rows.some((row) => row.key === key)) rows.push({ key, value: String(budgets[key]), hiddenSuffix: '（分类已不在列表）' });
+    }
+    return rows;
+  },
+  openBudgetSheet() {
+    const settings = pickSettings(store.state.records.settings.app && store.state.records.settings.app.data);
+    const record = store.state.records.settings['app'];
+    this.__budgetEditBase = { updatedAt: (record && record.updatedAt) || 0 };
+    this.setData({
+      budgetSheetShow: true,
+      budgetEditing: true,
+      budgetRemoteChanged: false,
+      budgetForm: {
+        main: settings.budget ? String(settings.budget) : '',
+        rows: this.buildBudgetRows(settings)
+      }
+    });
+  },
+  closeBudgetSheet() {
+    this.__budgetEditBase = null;
+    this.setData({ budgetSheetShow: false, budgetEditing: false, budgetRemoteChanged: false });
+  },
+  onMoneyBlur(event) {
+    const { path, negative, positive, index } = event.currentTarget.dataset;
+    const field = path || 'budgetForm.rows[' + index + '].value';
+    const value = event.detail.value;
+    this.setData({ [field]: moneyInputText(value, negative, positive) });
+  },
+  onBudgetMainInput(event) { this.setData({ 'budgetForm.main': event.detail.value }); },
+  onBudgetRowInput(event) {
+    const index = Number(event.currentTarget.dataset.index);
+    const value = event.detail.value;
+    if (!Number.isInteger(index) || !this.data.budgetForm.rows[index]) return;
+    this.setData({ ['budgetForm.rows[' + index + '].value']: value });
+  },
+  saveBudget() {
+    const budget = parseMoneyInput(this.data.budgetForm.main);
+    if (!Number.isFinite(budget) || budget < 0 || budget > 1000000) {
+      wx.showToast({ title: '预算应为 0～100 万之间的金额', icon: 'none' });
+      return;
+    }
+    const categoryBudgets = {};
+    for (const row of this.data.budgetForm.rows) {
+      const input = String(row.value || '').trim();
+      if (!input) continue;
+      const value = parseMoneyInput(input);
+      if (!Number.isFinite(value) || value < 0 || value > 1000000) {
+        wx.showToast({ title: row.key + ' 预算应为 0～100 万', icon: 'none' });
+        return;
+      }
+      categoryBudgets[row.key] = value;
+    }
+    if (ui.isRepeatedTap(this, 'money-budget-save', 600)) return;
+    const settings = pickSettings(store.state.records.settings.app && store.state.records.settings.app.data);
+    const next = { ...settings, budget };
+    if (Object.keys(categoryBudgets).length) next.categoryBudgets = categoryBudgets;
+    else delete next.categoryBudgets;
+    sync.upsert('settings', next, 'app');
+    this.__budgetEditBase = null;
+    this.setData({ budgetSheetShow: false, budgetEditing: false, budgetRemoteChanged: false });
+    ui.completeFeedback({ toast: budget ? '预算已保存' : '已清除月预算' });
+  },
 
   categoryChoices(type, current) {
     if (type === 'transfer') return [TRANSFER_CATEGORY];
@@ -293,9 +518,41 @@ Page({
       toAccountName: transfer ? transfer.name : '请选择转入账户'
     };
   },
+  /*
+   * 新增一笔：打开即聚焦金额（U01/U04），沿用上次账户与上次支出分类（仍在可选列表时），
+   * 并恢复未保存完的表单草稿 —— 关闭弹层时按实际修改情况暂存，无内容则不留草稿。
+   */
   openAdd() {
     const form = transactionForm(sync.fmtDate(new Date()));
-    this.setData({ sheetShow: true, cats: this.categoryChoices('expense'), form: this.namedForm(form) });
+    const recent = readJsonKey(RECENT_KEY) || {};
+    if (recent.accountId && this.data.accountOptions.some((item) => item.id === recent.accountId)) {
+      form.accountId = recent.accountId;
+    }
+    const draft = readJsonKey(FORM_DRAFT_KEY);
+    let restored = false;
+    if (draft && !draft.id) {
+      form.type = ['income', 'expense', 'transfer'].includes(draft.type) ? draft.type : 'expense';
+      if (String(draft.amount || '') !== '') form.amount = String(draft.amount);
+      if (draft.category && this.categoryChoices(form.type).includes(draft.category)) form.category = draft.category;
+      if (draft.date && /^\d{4}-\d{2}-\d{2}$/.test(draft.date)) form.date = draft.date;
+      if (draft.note) form.note = String(draft.note);
+      if (draft.accountId && this.data.accountOptions.some((item) => item.id === draft.accountId)) form.accountId = draft.accountId;
+      restored = Boolean(String(draft.amount || '') !== '' || draft.note);
+    }
+    this.setData({ sheetShow: true, focusAmount: true, cats: this.categoryChoices(form.type, form.category), form: this.namedForm(form) });
+    if (restored) wx.showToast({ title: '已恢复上次未保存的内容', icon: 'none' });
+  },
+  /* 表单是否被实际修改过：决定关闭时是否值得暂存草稿（避免无意义的确认弹窗） */
+  formTouched() {
+    const form = this.data.form;
+    return String(form.amount || '') !== '' || String(form.note || '') !== '' || form.type !== 'expense' || form.accountId !== '';
+  },
+  stashFormDraft() {
+    // 编辑既有流水的弹层与「记一笔」草稿无关：不动 FORM_DRAFT_KEY，避免看一眼旧流水就毁掉未保存的新增草稿
+    if (this.data.form.id) return;
+    if (!this.formTouched()) { removeKey(FORM_DRAFT_KEY); return; }
+    const form = this.data.form;
+    writeJsonKey(FORM_DRAFT_KEY, { type: form.type, amount: form.amount, category: form.category, date: form.date, note: form.note, accountId: form.accountId, savedAt: Date.now() });
   },
   /* 点流水行直接打开编辑弹层；删除移到弹层内（见 removeTransaction），少一步 ActionSheet */
   openEdit(event) { this.openEditById(event.currentTarget.dataset.id); },
@@ -308,14 +565,26 @@ Page({
       date: record.data.date || sync.fmtDate(new Date()), note: record.data.note || '', accountId: record.data.accountId || '', toAccountId: record.data.toAccountId || ''
     });
     // 编辑时带上原分类：即使已被隐藏也要出现在选择器里，保证原值可见可选
-    this.setData({ sheetShow: true, cats: this.categoryChoices(type, form.category), form });
+    this.setData({ sheetShow: true, focusAmount: false, cats: this.categoryChoices(type, form.category), form });
   },
-  /* 搜索页/今日页深链中转：写入方经 utils/pending-open，这里消费后打开对应流水 */
+  /*
+   * 搜索页/今日页深链中转：消费一次性导航意图（U01）。
+   * create → 直接打开新增表单（聚焦金额）；budget → 打开预算编辑器；id → 打开对应流水编辑。
+   * 意图消费后即清除，无论用户最终保存还是放弃都只生效一次。
+   */
   consumePendingOpen() {
-    const id = consumePendingOpenStorage('money');
-    if (!id) return;
-    this.openEditById(id);
+    const intent = consumePendingAction('money');
+    this.setData({ returnSearch: intent.action === ACTIONS.SEARCH });
+    if (intent.action === ACTIONS.CREATE) return this.openAdd();
+    if (intent.action === ACTIONS.BUDGET) return this.openBudgetSheet();
+    if (intent.action === ACTIONS.ACCOUNTS) {
+      this.setData({ accountsExpanded: true }, () => wx.pageScrollTo({ selector: '#account-list', duration: 200 }));
+      return;
+    }
+    if (intent.action === ACTIONS.ACCOUNT) return this.openAccountById(intent.id);
+    if (intent.id) this.openEditById(intent.id);
   },
+  returnToSearch,
   /* 编辑弹层内的删除按钮：立即执行 + 5 秒撤销条 */
   removeTransaction() {
     const id = this.data.form.id;
@@ -333,7 +602,12 @@ Page({
     });
   },
   onUndoTap() { ui.performUndo(this); },
-  closeSheet() { if (!this.data.saving) this.setData({ sheetShow: false }); },
+  /* 关闭弹层：有实际修改就暂存草稿（下次打开恢复），空表单直接关、不弹确认（长表单草稿保护） */
+  closeSheet() {
+    if (this.data.saving) return;
+    this.stashFormDraft();
+    this.setData({ sheetShow: false, focusAmount: false });
+  },
   noop() {},
   setType(event) {
     const type = event.currentTarget.dataset.type;
@@ -429,17 +703,23 @@ Page({
   save() {
     const form = this.data.form;
     const amount = parseMoneyInput(form.amount);
-    if (!(amount > 0)) return wx.showToast({ title: '请输入正确金额', icon: 'none' });
+    if (!(amount > 0) || amount > 100000000) return wx.showToast({ title: amountError(form.amount, amount), icon: 'none' });
     if (!form.date) return wx.showToast({ title: '请选择日期', icon: 'none' });
     const type = ['income', 'expense', 'transfer'].includes(form.type) ? form.type : 'expense';
     if (type === 'transfer' && (!form.accountId || !form.toAccountId || form.accountId === form.toAccountId)) return wx.showToast({ title: '请选择不同的转出和转入账户', icon: 'none' });
     const data = { type, amount, category: type === 'transfer' ? TRANSFER_CATEGORY : form.category, date: form.date, note: String(form.note || '').trim() };
     if (form.accountId) data.accountId = form.accountId;
     if (type === 'transfer') data.toAccountId = form.toAccountId;
+    const source = store.state.records.money[form.id];
+    if (source && source.data && source.data.shoppingId) data.shoppingId = source.data.shoppingId;
     if (ui.isRepeatedTap(this, 'money-save', 600)) return;
     this.setData({ saving: true });
     sync.upsert('money', data, form.id || undefined);
-    this.setData({ sheetShow: false, saving: false });
+    // 记住本次的支出分类与账户，下次「记一笔」自动沿用（U04）
+    if (type === 'expense') writeJsonKey(RECENT_KEY, { category: data.category, accountId: data.accountId || '' });
+    else if (form.accountId) writeJsonKey(RECENT_KEY, { accountId: form.accountId });
+    if (!form.id) removeKey(FORM_DRAFT_KEY);
+    this.setData({ sheetShow: false, saving: false, focusAmount: false });
     ui.completeFeedback({ toast: type === 'transfer' ? '转账已记下' : '已记下' });
   },
 
@@ -449,8 +729,8 @@ Page({
     this.setData({ 'accountForm.name': item.name, 'accountForm.kind': item.kind, 'accountForm.category': item.category });
   },
   /* 点账户行直接打开编辑弹层；删除移到弹层内（见 removeAccount） */
-  openAccountEdit(event) {
-    const id = event.currentTarget.dataset.id;
+  openAccountEdit(event) { this.openAccountById(event.currentTarget.dataset.id); },
+  openAccountById(id) {
     const record = store.state.records.accounts && store.state.records.accounts[id];
     if (!record || record.deletedAt || !record.data) return;
     const data = record.data;
@@ -495,9 +775,9 @@ Page({
     const form = this.data.accountForm;
     const name = String(form.name || '').trim();
     const openingBalance = parseMoneyInput(form.openingBalance);
-    const manualAdjustment = parseMoneyInput(form.manualAdjustment);
+    const manualAdjustment = parseMoneyInput(form.manualAdjustment, true);
     if (!name) return wx.showToast({ title: '请填写账户名称', icon: 'none' });
-    if (!Number.isFinite(openingBalance) || openingBalance < 0 || !Number.isFinite(manualAdjustment)) return wx.showToast({ title: '请输入正确的期初余额和校准金额', icon: 'none' });
+    if (!Number.isFinite(openingBalance) || openingBalance < 0 || openingBalance > 1000000000 || !Number.isFinite(manualAdjustment) || Math.abs(manualAdjustment) > 1000000000) return wx.showToast({ title: '请输入正确的期初余额和校准金额', icon: 'none' });
     const data = {
       kind: form.kind === 'liability' ? 'liability' : 'asset', name, openingBalance, manualAdjustment,
       category: form.category || (form.kind === 'liability' ? '消费信贷' : '银行卡'), note: String(form.note || '').trim()
@@ -507,7 +787,7 @@ Page({
       const minimumPayment = parseMoneyInput(form.minimumPayment);
       const statementDay = form.statementDay === '' ? undefined : Number(form.statementDay);
       const dueDay = form.dueDay === '' ? undefined : Number(form.dueDay);
-      if (currentBill < 0 || minimumPayment < 0 || !Number.isFinite(currentBill) || !Number.isFinite(minimumPayment) || (statementDay && (!Number.isInteger(statementDay) || statementDay < 1 || statementDay > 31)) || (dueDay && (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31))) return wx.showToast({ title: '账单日期或金额不正确', icon: 'none' });
+      if (currentBill < 0 || currentBill > 1000000000 || minimumPayment < 0 || minimumPayment > 1000000000 || !Number.isFinite(currentBill) || !Number.isFinite(minimumPayment) || (statementDay && (!Number.isInteger(statementDay) || statementDay < 1 || statementDay > 31)) || (dueDay && (!Number.isInteger(dueDay) || dueDay < 1 || dueDay > 31))) return wx.showToast({ title: '账单日期或金额不正确', icon: 'none' });
       data.currentBill = currentBill;
       data.minimumPayment = minimumPayment;
       if (statementDay) data.statementDay = statementDay;

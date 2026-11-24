@@ -202,6 +202,22 @@ async function main() {
   }))).backup);
   assert.ok(!okPreview.error, '清理后同量级导入必须放行');
 
+  freshState();
+  putBehavior = 'accept';
+  const legacy = makeBackup({
+    money: ['decimal-a', 'decimal-b'].map((id) => ({
+      id, data: { type: 'expense', amount: 1.005, category: '餐饮', date: '2026-09-01' }, updatedAt: 1
+    }))
+  });
+  const precision = backup.previewImport(backup.parseBackup(JSON.stringify(legacy)).backup);
+  assert.strictEqual(precision.roundedMoneyRecords, 2);
+  assert.strictEqual(precision.moneyDifferences[0].expense.differenceCents, 1);
+  assert.deepStrictEqual(precision.creates.map((entry) => entry.data.amount), [1.01, 1.01]);
+  await backup.applyImport(precision);
+  const exported = backup.buildLocalBackup();
+  assert.deepStrictEqual(exported.records.money.map((entry) => entry.data.amount), [1.01, 1.01]);
+  assert.strictEqual(backup.previewImport(backup.parseBackup(JSON.stringify(legacy)).backup).create, 0);
+  assert.strictEqual(legacy.records.money[0].data.amount, 1.005);
   console.log('BACKUP_IMPORT_TEST_PASSED');
 }
 

@@ -1,3 +1,4 @@
+const { normalizeMoneyData } = require('./amount');
 /* 同步引擎：先渲染本地缓存 → 拉云端增量 → 写队列乐观上送 → 失败可见可重试
  * 架构约束：本文件是唯一发起网络读写的地方；页面只调 upsert/remove/refresh，
  * 渲染由 store.notify() 统一驱动，页面渲染函数之间互不调用。 */
@@ -11,7 +12,9 @@ let pullTimer = null;
 let flushTimer = null;
 let retryTimer = null;
 let reconnectTimer = null;
-let pullLock = false;
+let pullTask = null;
+let rebuildTask = null;
+let pullAfterRebuild = false;
 let flushLock = false;
 let flushWaiters = [];
 let pullingDebounce = null;
@@ -19,57 +22,109 @@ let initialized = false;
 let networkHandler = null;
 
 // ---------- 拉取（增量） ----------
+/*
+ * 下载游标（R03）：优先使用服务端单调变更序号 sinceSeq —— 本机写入不推进它，
+ * 晚到上传的旧时间戳记录也不会被漏拉。响应带 cursor（数字）即服务端支持序号模式；
+ * 旧服务端没有 cursor 字段时退回 legacy since 模式（since 只由服务端来源写入推进，
+ * 本机编辑不再推进，因此旧协议下同样不会漏拉，最多重复下发、由 LWW 去重）。
+ * sinceSeq = -1（旧版本快照迁移哨兵）：本次请求按 seq=0/since=0 完整补拉；
+ * 哨兵在任一模式的成功响应后归位到 0（审查修复：否则旧服务端下每次拉取都是全量）。
+ */
+let epoch = 0; // destroy() 递增：中止在途 pull/flush 的续体，退出账号后不再上送或回写
+
 function pull() {
-  if (pullLock) return Promise.resolve(false);
-  pullLock = true;
+  if (rebuildTask) {
+    pullAfterRebuild = true;
+    return Promise.resolve(false);
+  }
+  if (pullTask) return pullTask;
+  const myEpoch = epoch;
   store.setSyncState('syncing');
-  return api.apiSync(store.state.since)
-    .then((res) => {
-      applyChanges(res.changes || {});
+  const useSeqCursor = store.state.sinceSeq >= 0;
+  const requestSince = useSeqCursor ? store.state.since : 0;
+  const requestSinceSeq = useSeqCursor ? store.state.sinceSeq : 0;
+  pullTask = api.apiSync(requestSince, requestSinceSeq, store.state.syncGeneration)
+    .then(async (res) => {
+      if (myEpoch !== epoch) return false; // 已退出/重建引擎：丢弃续体
+      const seqMode = Boolean(res && typeof res.cursor === 'number');
+      if (seqMode && res.reset) {
+        // A manual rebuild already waiting on this pull will install the authoritative snapshot.
+        if (rebuildTask) {
+          store.setSyncState('idle');
+          return false;
+        }
+        await rebuild(true);
+        if (myEpoch !== epoch) return false;
+      } else {
+        applyChanges(res.changes || {}, { fullResync: seqMode && requestSinceSeq === 0 });
+        if (seqMode) store.advanceSinceSeq(res.cursor, res.generation);
+      }
+      if (!seqMode && store.state.sinceSeq < 0) store.advanceSinceSeq(0);
       store.setSyncState('idle');
       flush().catch(() => {});
       return true;
     })
     .catch(() => {
-      store.setSyncState('offline');
+      if (myEpoch === epoch) store.setSyncState('offline');
       return false;
     })
     .then((synced) => {
-      pullLock = false;
+      if (myEpoch === epoch) pullTask = null;
       return synced;
     });
+  return pullTask;
 }
 function pullSoon() {
   clearTimeout(pullingDebounce);
   pullingDebounce = setTimeout(pull, 1200);
 }
 
-function applyChanges(changes) {
+/*
+ * 应用服务端变更。options.fullResync：完整补拉（迁移/重建场景）——
+ * 待同步队列与被拒写入里的记录是本机唯一副本，服务端版本不得覆盖它们；
+ * 正式提交由队列冲刷完成（服务端 LWW/createOnly 仲裁），补拉只负责补齐其他内容。
+ */
+function applyChanges(changes, options) {
+  const settings = options || {};
   let touched = false;
+  let protectedKeys = null;
+  if (settings.fullResync) {
+    protectedKeys = new Set();
+    store.state.queue.forEach((item) => { if (item && item.collection && item.id) protectedKeys.add(item.collection + '|' + item.id); });
+    store.state.rejectedWrites.forEach((entry) => {
+      if (entry.item && entry.item.collection && entry.item.id) protectedKeys.add(entry.item.collection + '|' + entry.item.id);
+    });
+  }
   for (const coll of Object.keys(changes)) {
     if (!store.state.records[coll]) continue;
     for (const r of changes[coll]) {
+      if (protectedKeys && protectedKeys.has(coll + '|' + r.id)) continue;
       if (r.deletedAt) {
-        touched = store.applyLocalDelete(coll, r.id, r.updatedAt) || touched;
+        touched = store.applyLocalDelete(coll, r.id, r.updatedAt, { fromServer: true }) || touched;
       } else {
-        touched = store.applyLocalUpsert(coll, { id: r.id, data: r.data, updatedAt: r.updatedAt }) || touched;
+        touched = store.applyLocalUpsert(coll, { id: r.id, data: r.data, updatedAt: r.updatedAt }, { fromServer: true }) || touched;
       }
     }
   }
-  if (touched) { store.persist(); store.notify(); }
+  if (touched) { store.persist(); store.notify(Object.keys(changes)); }
 }
 
 // ---------- 写入（乐观更新 + 队列） ----------
 function upsert(collection, data, id, options) {
+  data = normalizeMoneyData(collection, data);
   const rid = id || ('u' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7));
   // options.updatedAt 供需要固定时间戳的写入使用（如导入恢复）；默认仍取当前时钟。
   const updatedAt = options && Number(options.updatedAt) > 0 ? Number(options.updatedAt) : Date.now();
-  store.applyLocalUpsert(collection, { id: rid, data, updatedAt });
+  // 本机乐观写入：不推进下载游标（R03），只入待写队列等服务端仲裁。
+  if (collection === 'money' && options && options.createOnly && data.skipped === true) {
+    store.applyLocalDelete(collection, rid, updatedAt);
+  } else store.applyLocalUpsert(collection, { id: rid, data, updatedAt });
   const queued = { type: 'put', collection, id: rid, data, updatedAt };
   // createOnly：导入恢复语义 —— 服务端仅在该记录不存在时创建，已存在（存活或墓碑）以云端为准
   if (options && options.createOnly) queued.createOnly = true;
+  if (options && options.replacesDeletedAt) queued.replacesDeletedAt = options.replacesDeletedAt;
   store.enqueue(queued);
-  store.notify();
+  store.notify([collection]);
   scheduleFlush();
   return rid;
 }
@@ -78,7 +133,7 @@ function remove(collection, id) {
   const updatedAt = Date.now();
   store.applyLocalDelete(collection, id, updatedAt);
   store.enqueue({ type: 'del', collection, id, updatedAt });
-  store.notify();
+  store.notify([collection]);
   scheduleFlush();
 }
 
@@ -103,6 +158,11 @@ function isPermanentRejection(error) {
 }
 
 function flush() {
+  if (rebuildTask && !flushLock) {
+    const waitingEpoch = epoch;
+    const resume = () => waitingEpoch === epoch ? flush() : undefined;
+    return rebuildTask.then(resume, resume);
+  }
   const completion = new Promise((resolve, reject) => {
     if (!store.state.queue.length && !flushLock) { resolve(); return; }
     flushWaiters.push({ resolve, reject });
@@ -111,42 +171,55 @@ function flush() {
   const q = store.state.queue;
   if (!q.length) return completion;
   flushLock = true;
+  const myEpoch = epoch;
   const settle = (error) => {
     const waiters = flushWaiters;
     flushWaiters = [];
     waiters.forEach((waiter) => error ? waiter.reject(error) : waiter.resolve());
   };
   const step = () => {
+    if (myEpoch !== epoch) return; // 引擎已销毁（退出账号）：中止在途冲刷，队列交给 resetLocal 处置
     const item = q[0];
     if (!item) { flushLock = false; store.setSyncState('idle'); settle(); return; }
+    const outgoingData = item.type === 'put' ? normalizeMoneyData(item.collection, item.data) : item.data;
     const p = item.type === 'put'
-      ? api.apiPut(item.collection, item.id, item.data, item.updatedAt, item.createOnly)
+      ? api.apiPut(item.collection, item.id, outgoingData, item.updatedAt, item.createOnly, item.replacesDeletedAt)
       : api.apiDelete(item.collection, item.id, item.updatedAt);
     p.then((res) => {
+      if (myEpoch !== epoch) return;
       // 服务端拒绝旧写入：以服务端为准回写本地。
       // reason=exists（导入恢复冲突）：服务端现状是权威 —— 云端已有的存活记录/墓碑必须原样覆盖本地，
       // 不能走 LWW（本地导入写入的 updatedAt 更新，普通合并会错误地保住导入值）。
       if (res && res.applied === false && res.record) {
         if (res.reason === 'exists') store.forceApplyServer(item.collection, res.record);
-        else store.applyLocalUpsert(item.collection, res.record);
+        else store.applyLocalUpsert(item.collection, res.record, { fromServer: true });
+        store.notify([item.collection]);
       }
-      q.shift();
+      if (res && res.applied === true && res.record && !res.record.deletedAt &&
+          outgoingData !== item.data) {
+        const newerPending = q.some((entry) => entry !== item && entry.collection === item.collection &&
+          entry.id === item.id && entry.updatedAt >= item.updatedAt);
+        if (!newerPending && store.applyLocalUpsert(item.collection, res.record)) store.notify([item.collection]);
+      }
+      /*
+       * 按身份移除发起上送的那一条（审查修复）：冲刷期间 retryRejectedWrites 会把重试项
+       * unshift 到队首，盲目 q.shift() 会移掉从未上送的重试项、留下已上送的旧项。
+       */
+      const itemIndex = q.indexOf(item);
+      if (itemIndex >= 0) q.splice(itemIndex, 1);
+      // 队列每次变化都同步落盘（独立 key，不依赖快照防抖），进程被杀也不丢已上送进度
+      store.persistQueue();
       store.persist();
       store.setSyncState('idle');
+      store.notify(['__sync__']);
       step();
     }).catch((error) => {
-      if (isPermanentRejection(error)) {
-        /*
-         * 丢弃队首并继续冲刷后面的写入。
-         * 本地记录保留用户填的值（不静默回滚），把拒绝原因记进 store 由「我的」页提示并可手动重试。
-         */
-        q.shift();
-        store.recordRejectedWrite({
-          item,
-          statusCode: Number(error && error.statusCode) || 0,
-          code: (error && error.code) || ''
-        });
-        store.persist();
+      if (myEpoch !== epoch) return;
+      if (isPermanentRejection(error) && store.recordRejectedWrite({
+        item,
+        statusCode: Number(error && error.statusCode) || 0,
+        code: (error && error.code) || ''
+      })) {
         step();
         return;
       }
@@ -159,6 +232,54 @@ function flush() {
   };
   step();
   return completion;
+}
+
+/*
+ * 原子重建本机缓存（R06）：先从服务端拉全量到 staging，叠加未同步队列与被拒写入，
+ * 结构校验通过后一次性换装 —— 失败路径不清空旧记录，页面不会先变空白。
+ * 云端数据不受影响；未同步内容（唯一副本）叠加回新快照后继续由队列冲刷上送。
+ * since 参数固定为 0（审查修复）：新服务端按 sinceSeq=0 走 seq 全量；旧服务端按 since=0
+ * 返回全量 —— 传 state.since 会被旧服务端当增量处理，换装会把"增量之外的旧记录"从本机截断。
+ */
+function rebuild(fromPull = false) {
+  if (rebuildTask) return rebuildTask;
+  const myEpoch = epoch;
+  const pendingPull = fromPull ? null : pullTask;
+  const pendingFlush = flushLock ? flush().catch(() => {}) : null;
+  rebuildTask = Promise.all([pendingPull, pendingFlush]).then(async () => {
+    if (myEpoch !== epoch) throw new Error('rebuild_aborted');
+    const res = await api.apiSync(0, 0);
+    if (myEpoch !== epoch) throw new Error('rebuild_aborted');
+    if (!res || (!res.changes && typeof res.cursor !== 'number')) throw new Error('rebuild_empty_response');
+
+    const staging = Object.fromEntries(store.COLLECTIONS.map((collection) => [collection, {}]));
+    let since = 0;
+    for (const [collection, rows] of Object.entries(res.changes || {})) {
+      if (!Object.prototype.hasOwnProperty.call(staging, collection)) continue;
+      if (!Array.isArray(rows)) throw new Error('rebuild_invalid_snapshot');
+      for (const row of rows) {
+        if (!row || typeof row.id !== 'string') throw new Error('rebuild_invalid_record');
+        const updatedAt = Number(row.updatedAt) || 0;
+        since = Math.max(since, updatedAt);
+        staging[collection][row.id] = {
+          id: row.id, data: row.deletedAt ? {} : (row.data || {}),
+          updatedAt, deletedAt: Number(row.deletedAt) || 0
+        };
+      }
+    }
+    store.overlayLocalWrites(staging, store.state.queue, store.state.rejectedWrites);
+    if (!store.swapRecords(staging, res.cursor, since, res.generation)) throw new Error('rebuild_persist_failed');
+    store.notify();
+    return true;
+  }).finally(() => {
+    if (myEpoch !== epoch) return;
+    rebuildTask = null;
+    if (pullAfterRebuild) {
+      pullAfterRebuild = false;
+      pullSoon();
+    }
+  });
+  return rebuildTask;
 }
 
 // ---------- WebSocket 实时通知 ----------
@@ -278,6 +399,7 @@ function init() {
 }
 
 function destroy() {
+  epoch += 1; // 中止在途 pull/flush 的续体：退出账号后不再上送"用户已确认放弃"的写入、不回写旧账号数据
   clearInterval(pullTimer);
   clearTimeout(flushTimer);
   clearTimeout(retryTimer);
@@ -290,10 +412,15 @@ function destroy() {
   retryTimer = null;
   reconnectTimer = null;
   networkHandler = null;
-  pullLock = false;
+  pullTask = null;
+  rebuildTask = null;
+  pullAfterRebuild = false;
   flushLock = false;
+  // 等待中的 flush 调用方以拒绝收场（调用方都带 .catch），不能永久挂起
+  const waiters = flushWaiters;
   flushWaiters = [];
+  waiters.forEach((waiter) => waiter.reject(new Error('sync_destroyed')));
   initialized = false;
 }
 
-module.exports = { init, destroy, pull, flush, upsert, remove, clearDemo, connectWS, shouldUseRealtime, fmtDate };
+module.exports = { init, destroy, pull, flush, rebuild, applyChanges, upsert, remove, clearDemo, connectWS, shouldUseRealtime, fmtDate };

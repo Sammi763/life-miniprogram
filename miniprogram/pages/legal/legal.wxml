@@ -21,5 +21,4 @@
   </view>
 
   <button wx:if="{{active === 'privacy'}}" class="privacy-contract-btn" bindtap="openWechatPrivacy" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">查看微信用户隐私保护指引</button>
-  <view class="legal-footer">版本：发布前核对稿 · 请以实际运营信息完成替换</view>
 </view>

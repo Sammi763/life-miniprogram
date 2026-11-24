@@ -1,0 +1,47 @@
+<view class="theme-page" style="{{themeStyle}}">
+  <view class="card">
+    <view class="card-title">待确认账单</view>
+    <view wx:if="{{!rows.length && !repayments.length}}" class="sub">暂无待确认账单。</view>
+    <view wx:for="{{rows}}" wx:key="id" class="row bill-row" bindtap="openCycle" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
+      <view>{{item.title}}<view class="sub">{{item.date}}</view></view><text>¥{{item.amountText}} ›</text>
+    </view>
+    <view wx:for="{{repayments}}" wx:key="id" class="row bill-row" bindtap="editRepayment" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
+      <view>{{item.name}}还款<view class="sub">{{item.dueDate}} 到期<text wx:if="{{item.paidAmount}}"> · 已记还款 ¥{{item.paidAmount}}</text></view></view><text>¥{{item.amountText}} ›</text>
+    </view>
+    <button wx:if="{{hasMore}}" class="btn btn-ghost" bindtap="onReachBottom" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">更多账单</button>
+  </view>
+  <view class="card">
+    <view class="card-title">周期收支模板</view>
+    <view wx:for="{{templates}}" wx:key="id" class="row bill-row" bindtap="editRule" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
+      <view>{{item.title}}<view class="sub">下次 {{item.nextDate}}</view></view><text>¥{{item.amountText}} ›</text>
+    </view>
+    <button class="btn btn-primary" bindtap="newRule" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">新建模板</button>
+  </view>
+  <view wx:if="{{form || payment}}" class="mask" bindtap="closeForm"></view>
+  <view wx:if="{{form || payment}}" class="sheet">
+    <view class="sheet-title">{{form ? (form.id ? '编辑模板' : '新建模板') : payment.title}}</view>
+    <block wx:if="{{form}}">
+      <view class="field"><view class="field-label">名称</view><input value="{{form.title}}" maxlength="60" bindinput="ruleTitle" placeholder="例如：房租" /></view>
+      <view class="field"><view class="field-label">收支方向</view><picker range="{{directions}}" value="{{form.type === 'income' ? 1 : 0}}" bindchange="ruleType"><view>{{form.type === 'income' ? '收入' : '支出'}} ›</view></picker></view>
+      <view class="field"><view class="field-label">重复频率</view><picker range="{{frequencies}}" value="{{form.frequency === 'weekly' ? 1 : 0}}" bindchange="ruleFrequency"><view>{{form.frequency === 'weekly' ? '每周' : '每月'}} ›</view></picker></view>
+      <view class="field"><view class="field-label">参照日期</view><picker mode="date" value="{{form.startDate}}" bindchange="ruleDate"><view>{{form.startDate}} ›</view></picker><view class="sub">每月按所选日期出账，没有对应日期时按当月最后一天出账。</view></view>
+      <view class="field"><view class="field-label">预计金额</view><input value="{{form.amount}}" type="digit" bindinput="ruleAmount" bindblur="onMoneyBlur" data-path="form.amount" data-positive="{{true}}" placeholder="0.00" /></view>
+      <view wx:if="{{form.id}}" class="sub">改动从 {{form.effective}} 起生效。</view>
+    </block>
+    <block wx:else>
+      <view class="field"><view class="field-label">实际金额</view><input value="{{payment.amount}}" type="digit" bindinput="paymentAmount" bindblur="onMoneyBlur" data-path="payment.amount" data-positive="{{true}}" /></view>
+      <view class="field"><view class="field-label">入账日期</view><picker mode="date" value="{{payment.date}}" bindchange="paymentDate"><view>{{payment.date}} ›</view></picker></view>
+    </block>
+    <view wx:if="{{!payment || payment.type !== 'transfer'}}" class="field"><view class="field-label">分类</view><picker range="{{categories}}" value="{{categoryIndex}}" bindchange="selectCategory"><view>{{categories[categoryIndex]}} ›</view></picker></view>
+    <view class="field"><view class="field-label">{{payment.type === 'transfer' ? '付款账户' : '账户'}}</view><picker range="{{accountOptions}}" range-key="name" value="{{accountIndex}}" bindchange="selectAccount"><view>{{payment.type === 'transfer' && !payment.accountId ? '请选择' : accountOptions[accountIndex].name}} ›</view></picker></view>
+    <block wx:if="{{form}}">
+      <button class="btn btn-primary" bindtap="saveRule" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">保存模板</button>
+      <button wx:if="{{form.id}}" class="btn btn-ghost" bindtap="stopRule" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">停止模板</button>
+    </block>
+    <block wx:else>
+      <button class="btn btn-primary" bindtap="confirmPayment" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">确认入账</button>
+      <button wx:if="{{payment.dueDate}}" class="btn btn-ghost" bindtap="skipPayment" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">跳过本期</button>
+    </block>
+    <button class="btn btn-ghost" bindtap="closeForm" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">取消</button>
+  </view>
+</view>

@@ -1,5 +1,5 @@
 /*
- * 交互反馈工具：页面共用，只依赖 wx，不 require store/sync，避免循环依赖。
+ * 交互反馈工具：页面共用。主体只依赖 wx；bindStore 是唯一例外，函数体内延迟 require store（避免循环依赖）。
  *
  * 解决两类真实问题：
  * 1) 同步保存（本地乐观写）是同步执行的，快速连点会写入两条语义相同的记录；
@@ -35,8 +35,8 @@ const RETRY_LOADING_GUARD_MS = 30000;
 
 function retryWithFeedback(loader, options) {
   const settings = options || {};
-  const okTitle = settings.okTitle || '已同步';
-  const failTitle = settings.failTitle || '仍无法连接，改动已暂存本机';
+  const okTitle = settings.okTitle || '连接已恢复';
+  const failTitle = settings.failTitle || '仍无法连接，请稍后重试';
   wx.showLoading({ title: settings.loadingTitle || '正在重试', mask: true });
   let settled = false;
   const guard = setTimeout(() => settle(false), RETRY_LOADING_GUARD_MS);
@@ -102,4 +102,49 @@ function performUndo(page) {
   if (typeof settings.onUndo === 'function') settings.onUndo();
 }
 
-module.exports = { isRepeatedTap, retryWithFeedback, completeFeedback, armUndo, performUndo };
+/*
+ * 值相同的字段不进 setData（性能方案 §5「减少 onLoad/onShow 重复渲染」）。
+ * 记录数据均为可 JSON 序列化的纯值，用字符串比较判断相等；比较失败（循环引用等）按变化处理。
+ * 返回是否发生了 setData。
+ */
+function valueEquals(a, b) {
+  if (a === b) return true;
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch (error) { return false; }
+}
+function diffSetData(page, patch) {
+  if (!page || !patch) return false;
+  const changed = {};
+  let any = false;
+  for (const key of Object.keys(patch)) {
+    if (!valueEquals(page.data ? page.data[key] : undefined, patch[key])) {
+      changed[key] = patch[key];
+      any = true;
+    }
+  }
+  if (any) page.setData(changed);
+  return any;
+}
+
+/*
+ * 页面 × store 的统一绑定（性能方案 §5）：
+ * - 订阅按集合过滤，无关集合变化不进入本页；
+ * - 页面隐藏（onHide）时只标记 dirty，onShow 再合并刷新；
+ * - 仅同步状态变化（'__sync__'）时走页面的 renderSyncState 轻更新（只改状态角标），不做全量重算。
+ * 使用方：this.unbindStore = bindStore(this, ['money', 'habit'], this.render.bind(this), () => this.renderSyncState());
+ * onUnload 里 this.unbindStore()。页面须在 onHide 置 __pageHidden = true、onShow 复位并**无条件** render()
+ * （onShow 无条件刷新是最终一致性的兜底，__storeDirty 仅用于跳过隐藏期渲染，onShow 不看它）。
+ */
+function bindStore(page, collections, render, renderSyncState) {
+  // 延迟 require store，避免 ui.js ↔ store.js 循环依赖
+  const store = require('./store');
+  return store.subscribe((changed) => {
+    if (page.__pageHidden) { page.__storeDirty = true; return; }
+    if (changed && changed.length === 1 && changed[0] === '__sync__' && typeof renderSyncState === 'function') {
+      renderSyncState();
+      return;
+    }
+    render();
+  }, collections);
+}
+
+module.exports = { isRepeatedTap, retryWithFeedback, completeFeedback, armUndo, performUndo, diffSetData, bindStore };

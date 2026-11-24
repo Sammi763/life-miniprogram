@@ -20,7 +20,15 @@ assert.match(server, /https_required/, '生产环境必须可拒绝非 HTTPS 请
 assert.match(server, /no-store, private/, '私有 API 响应必须禁止缓存');
 assert.match(mysql, /hashSessionToken/, '会话令牌必须持久化为哈希');
 assert.match(sync, /isProduction\) return/, '体验/正式版不得播种开发示例数据');
-assert.match(legal, /个性化 AI 默认关闭/, '用户协议页必须写明 AI 默认关闭');
+assert.match(legal, /不向外部 AI 服务发送生活记录/, '法律页应与首发数据范围一致');
+assert.doesNotMatch(read('miniprogram/pages/mine/mine.js'), /chooseMessageFile|shareFileMessage/, '首发备份只走剪贴板');
+assert.match(read('miniprogram/pages/mine/mine.wxml'), /wx:if="\{\{showPersonalizedAi\}\}" class="setting-row ai-setting"/, '个性化 AI 开关按环境控制');
+const runtime = require('../miniprogram/config/runtime');
+for (const [envVersion, consentKey] of [['trial', 'trialAiConsent'], ['release', ''], ['develop', 'aiConsent']]) {
+  global.wx = { getAccountInfoSync: () => ({ miniProgram: { envVersion } }) };
+  assert.strictEqual(runtime.getRuntimeConfig().aiConsentKey, consentKey);
+}
+delete global.wx;
 assert.match(privacy, /剪贴板/, '隐私指引必须声明主动导出时的剪贴板使用');
 assert.ok(fs.existsSync(path.join(root, 'server/scripts/check-release-config.js')), '必须提供人工配置完成后的发布闸门');
 assert.ok(fs.existsSync(path.join(root, 'server/deploy/mysql-production-init.sql.example')), '必须提供低权限 MySQL 初始化模板');

@@ -1,4 +1,4 @@
-/* 文本优先产品契约：不再采集、上传或展示用户图片，记录卡片仍具备明确的点击反馈。 */
+/* 文本优先产品契约：业务记录保留文字模式，头像限于资料编辑，记录卡片仍具备明确的点击反馈。 */
 const assert = require('assert');
 const fs = require('fs');
 const path = require('path');
@@ -24,13 +24,13 @@ assert.doesNotMatch(schema, /CREATE TABLE IF NOT EXISTS uploads/i, '新建数据
 assert.doesNotMatch(caddy, /handle \/files/, '生产代理不应再转发文件下载路径');
 assert.doesNotMatch(env, /^UPLOAD_/m, '生产配置不应保留上传限额');
 
-assert.doesNotMatch(login, /chooseAvatar|open-type="chooseAvatar"/, '登录资料页不应请求微信头像');
-assert.doesNotMatch(mine, /<image/, '我的页面应使用文字头像，不读取远程图片');
+assert.match(login, /wx:if="{{avatarEnabled}}"[^>]*open-type="chooseAvatar"/, '头像选择由资料页能力控制');
+assert.match(mine, /<image wx:if="{{avatarPath}}"[^>]*src="{{avatarPath}}"/, '我的使用授权获取的头像临时文件');
 assert.match(login, /text-avatar/, '登录资料页应展示生成的文字头像');
 assert.doesNotMatch(mediaJs, /chooseMedia|chooseImage|chooseCover|coverPath|coverUrl|uploadFile/, '书影音不应再选择或上传封面');
 assert.doesNotMatch(media, /<image|cover-upload/, '书影音应为纯文字卡片');
 assert.match(media, /media-monogram/, '书影音卡片应有文字化的类型标识');
-assert.doesNotMatch(privacy, /相册\s*\/\s*相机|头像/, '隐私指引只能声明实际使用的能力');
+assert.match(privacy, /用户主动选择的头像/, '隐私指引说明主动选择头像');
 
 for (const relative of [
   'miniprogram/pages/money/money.wxml',

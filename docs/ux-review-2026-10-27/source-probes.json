@@ -1,0 +1,36 @@
+[
+  {
+    "probe": "local-write-advances-download-cursor",
+    "since": 2000,
+    "remoteTimestamp": 1500,
+    "remoteRecordReturned": false
+  },
+  {
+    "probe": "pending-queue-status",
+    "pending": 1,
+    "label": "已安全同步"
+  },
+  {
+    "probe": "budget-draft-reset-on-render",
+    "input": "4500",
+    "afterUnrelatedRender": "3000"
+  },
+  {
+    "probe": "saved-memory-draft-reappears",
+    "draftPresentAfterSaveAndTimer": true
+  },
+  {
+    "probe": "fast-back-loses-latest-draft",
+    "latestDraftSaved": false
+  },
+  {
+    "probe": "logout-clears-unsynced-queue",
+    "queueBefore": 1,
+    "queueAfter": 0
+  },
+  {
+    "probe": "logout-retains-auxiliary-local-data",
+    "draftStillStored": true,
+    "searchHistoryStillStored": true
+  }
+]

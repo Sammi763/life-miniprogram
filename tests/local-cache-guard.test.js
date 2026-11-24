@@ -5,6 +5,7 @@
  * 这里锁住：写失败必须被记录并通知页面、超限前先做无损瘦身、重建本机缓存不得丢掉未上送队列。
  */
 const assert = require('assert');
+const { BUILD_VERSION } = require('../miniprogram/config/build');
 const fs = require('fs');
 const path = require('path');
 
@@ -86,7 +87,7 @@ async function main() {
     assert.ok(after < before, '超限前应先清理过期墓碑（无损瘦身），实际 ' + before + ' -> ' + after);
     assert.strictEqual(store.state.persistError, '', '瘦身后应能正常写入');
 
-    // ---- 5. 重建本机缓存：清记录、回退 since、保留未上送队列 ----
+    // ---- 5. 重建本机缓存：legacy 兜底仍保留（清记录、回退 since、不丢队列）；页面入口走原子重建 ----
     store.state.since = 123456;
     store.state.queue.push({ type: 'put', collection: 'money', id: 'queued-1', data: { amount: 1 }, updatedAt: 999 });
     const queuedBefore = store.state.queue.length;
@@ -98,16 +99,19 @@ async function main() {
     assert.strictEqual(store.state.queue.length, queuedBefore, '未上送的队列绝不能丢');
     assert.strictEqual(store.state.persistError, '');
 
-    // ---- 6. 页面契约：「我的」页有入口与提示位 ----
+    // ---- 6. 页面契约：「我的」页有入口与提示位；重建走 sync.rebuild 原子路径（失败保留旧缓存） ----
     const mineWxml = read('miniprogram/pages/mine/mine.wxml');
     const mineJs = read('miniprogram/pages/mine/mine.js');
     assert.match(mineWxml, /bindtap="rebuildLocalCache"/, '「我的」页必须提供重建本机缓存入口');
     assert.match(mineWxml, /\{\{cacheText\}\}/, '应展示本机缓存占用，用户才判断得出是否异常');
     assert.match(mineWxml, /\{\{cacheError\}\}/, '写入失败必须能在页面上看到');
-    assert.match(mineJs, /store\.rebuildCache\(\)/);
+    assert.match(mineJs, /sync\.rebuild\(\)/, '页面重建必须走原子重建（先拉取校验再换装）');
     assert.match(mineJs, /s\.persistSize/, '占用体积应取实测值，不要每次渲染重新序列化全量数据');
     const appWxss = read('miniprogram/app.wxss');
     assert.match(appWxss, /\.notice-warn\s*\{/, '需要全局的警示样式');
+
+    // ---- 6b. 切后台兜底：App.onHide 必须立即落盘，不能等 250ms 防抖（进程被杀会丢） ----
+    assert.match(read('miniprogram/app.js'), /persistNow\(\)/, 'App.onHide 必须同步落盘');
 
     // ---- 7. 全局异常捕获：本地留痕、打码、不外传 ----
     const appSource = read('miniprogram/app.js');
@@ -130,12 +134,32 @@ async function main() {
       global.getCurrentPages = originalGetCurrentPages;
     }
     const appInstance = { globalData: {}, ...appDefinition };
+    // 冷启动登录校验期间，切后台不能使用尚未载入缓存的空状态回写。
+    store.resetLocal();
+    const pending = { type: 'put', collection: 'memories', id: 'draft', data: { content: '旧版离线随记' }, updatedAt: 1 };
+    const snapshot = {
+      records: { memories: { draft: { id: 'draft', data: pending.data, updatedAt: 1 } } },
+      since: 0,
+      queue: [pending],
+      rejectedWrites: [{ item: pending, statusCode: 422 }]
+    };
+    storage.wb_life_state = JSON.parse(JSON.stringify(snapshot));
+    appInstance.onHide();
+    assert.deepStrictEqual(storage.wb_life_state, snapshot, '未读入快照前切后台应保留旧版内容');
+    store.loadLocal();
+    store.applyLocalUpsert('memories', { id: 'last', data: { content: '最后一笔' }, updatedAt: 2 });
+    appInstance.onHide();
+    assert.strictEqual(storage.wb_life_state.records.memories.last.data.content, '最后一笔');
+    const savedSnapshot = storage.wb_life_state;
+    appInstance.onHide();
+    assert.strictEqual(storage.wb_life_state, savedSnapshot, '快照无变更时无需重写');
+
     appInstance.onError({ message: 'connectSocket:fail url wss://h/ws?token=SECRET-TOKEN-abcdef' });
     assert.ok(appInstance.globalData.clientIssue, '异常应写入 globalData 供页面展示');
     assert.strictEqual(appInstance.globalData.clientIssue.kind, 'onError');
     assert.strictEqual(appInstance.globalData.clientIssue.text.includes('SECRET-TOKEN-abcdef'), false, '日志与展示都不得包含原始 token');
     assert.match(appInstance.globalData.clientIssue.text, /token=\*\*\*/);
-    assert.match(appInstance.globalData.clientIssue.buildVersion, /^\d{8}\.\d+$/);
+    assert.strictEqual(appInstance.globalData.clientIssue.buildVersion, BUILD_VERSION);
     appInstance.onUnhandledRejection({ reason: { message: 'boom' } });
     assert.strictEqual(appInstance.globalData.clientIssue.kind, 'onUnhandledRejection');
 

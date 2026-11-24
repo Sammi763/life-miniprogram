@@ -1,7 +1,7 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，以下基于本机已有记录</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
+<view wx:if="{{offline}}" class="banner"><text>网络连接异常，以下复盘基于已有记录</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
 <view class="review-head"><view class="review-arrow" bindtap="previousWeek" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">‹</view><view bindtap="goCurrentWeek" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><view class="h1">每周复盘</view><view class="sub">{{weekLabel}} · 点此回到本周</view></view><view class="review-arrow {{canNext ? '' : 'review-arrow-disabled'}}" bindtap="nextWeek" hover-class="{{canNext ? 'tap-pressed' : 'none'}}" hover-start-time="20" hover-stay-time="90">›</view></view>
-<view class="privacy-note">仅你可见 · 根据已同步文字记录在本机计算</view>
+<view class="privacy-note">仅你可见 · 根据本周记录整理</view>
 
 <view class="card review-focus"><view class="card-title"><text>这一周的账本</text><text class="sub">转账不计入收支</text></view><view class="review-money"><view><view class="sub">收入</view><view class="money-in">+¥{{review.finance.incomeText}}</view></view><view><view class="sub">支出</view><view class="money-out">-¥{{review.finance.expenseText}}</view></view><view><view class="sub">结余</view><view>{{review.finance.balance < 0 ? '-' : ''}}¥{{review.finance.balanceText}}</view></view></view></view>
 
@@ -10,4 +10,26 @@
 <view class="card"><view class="card-title"><text>这周留下的记忆</text><text class="sub">{{review.memories.count}} 条 · {{review.memories.days}} 天</text></view><view wx:if="{{review.memories.count === 0}}" class="empty">这周还没有随记，给下一周留一个入口吧。</view><view wx:else class="memory-review"><view wx:if="{{review.memories.topTags.length}}" class="sub">常用标签：<text wx:for="{{review.memories.topTags}}" wx:key="tag" class="review-tag">#{{item.tag}}</text></view><view wx:if="{{review.memories.moods.length}}" class="sub">心情：<text wx:for="{{review.memories.moods}}" wx:key="mood" class="review-tag">{{item.mood}} {{item.count}}</text></view></view></view>
 
 <view class="card"><view class="card-title"><text>下周先安排</text></view><view wx:if="{{review.nextPlans.length === 0}}" class="empty">下周暂无未完成日程，给自己留一点空间。</view><view wx:for="{{review.nextPlans}}" wx:key="id" class="next-plan" bindtap="goPlan" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><text>{{item.dateShort}} {{item.time}}</text><text class="next-plan-title">{{item.title}}</text><text class="next-plan-arrow">›</text></view></view>
+
+<!-- U13 复盘闭环：写下一个调整，亲手转为下周的日程或习惯；不自动创建、可忽略 -->
+<view class="card">
+  <view class="card-title"><text>这周的专注</text><text class="sub">{{focusCount}} 次 · {{focusMinutes}} 分钟</text></view>
+  <button class="btn btn-ghost" bindtap="openFocus" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">打开专注计时</button>
+</view>
+<view class="card review-adjust">
+  <view class="field">
+    <view class="field-label">本周发现</view>
+    <textarea value="{{reflection}}" bindinput="onReflectionInput" maxlength="500" auto-height placeholder="这周有什么值得记下？" />
+  </view>
+  <view class="card-title"><text>下周一个调整</text><text class="sub">写下来，变成行动</text></view>
+  <view class="field">
+    <input value="{{adjustText}}" bindinput="onAdjustInput" maxlength="30" placeholder="例如：睡前不看手机 / 周三交周报" confirm-type="done" cursor-spacing="24" />
+  </view>
+  <button class="btn btn-primary" bindtap="saveNotes" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">保存复盘</button>
+  <view class="review-adjust-actions">
+    <button class="btn btn-ghost" bindtap="adjustToPlan" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">转为下周一日程</button>
+    <button class="btn btn-ghost" bindtap="adjustToHabit" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">转为每日习惯</button>
+  </view>
+  <view class="sub">只在你点击时创建，不会自动改预算或生成重复任务。</view>
+</view>
 </view>

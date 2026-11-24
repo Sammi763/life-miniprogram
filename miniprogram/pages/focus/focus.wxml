@@ -1,0 +1,12 @@
+<view class="theme-page" style="{{themeStyle}}">
+  <view class="card focus-card">
+    <view class="card-title">{{title || '自由专注'}}</view>
+    <view class="focus-clock">{{display}}</view>
+    <view wx:if="{{!active}}" class="field"><view class="field-label">分钟</view><input type="number" maxlength="3" value="{{minutes}}" bindinput="onMinutes" /></view>
+    <button wx:if="{{!active}}" class="btn btn-primary" bindtap="start" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">开始</button>
+    <block wx:else>
+      <button class="btn btn-primary" bindtap="finish" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{finished ? '记录本次专注' : '结束并记录'}}</button>
+      <button class="btn btn-ghost" bindtap="cancel" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">放弃本次</button>
+    </block>
+  </view>
+</view>

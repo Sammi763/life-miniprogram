@@ -81,6 +81,7 @@ function makeOneOff(record) {
     done: Boolean(data.done),
     skipped: Boolean(data.skipped),
     pinned: Boolean(data.pinned),
+    subtasks: data.subtasks || [],
     reminder: data.reminder && data.reminder.enabled ? data.reminder : null,
     updatedAt: record.updatedAt
   };
@@ -116,12 +117,15 @@ function buildSeriesOccurrences(record, rangeStart, rangeEnd, overrides) {
         sourceId: record.id,
         seriesId: record.id,
         isVirtual: true,
-        title: String(overrideData.titleSnapshot || data.title),
+        title: String(overrideData.titleOverride || overrideData.titleSnapshot || data.title),
         date: cursor,
-        time: String(overrideData.timeSnapshot || data.time || ''),
+        time: String(overrideData.timeOverride === undefined ? (overrideData.timeSnapshot || data.time || '') : overrideData.timeOverride),
         done: Boolean(overrideData.done),
         skipped: Boolean(overrideData.skipped),
         pinned: Boolean(data.pinned),
+        subtasks: (data.subtasks || []).map((task) => ({
+          ...task, done: (overrideData.completedSubtasks || []).includes(task.id)
+        })),
         reminder: null,
         updatedAt: Math.max(record.updatedAt, override ? override.updatedAt : 0)
       });
@@ -153,6 +157,22 @@ function derivePlanOccurrences(records, rangeStart, rangeEnd) {
   });
 }
 
+function editedPlanOccurrences(records) {
+  const normalized = valuesOfRecords(records);
+  const series = new Map(normalized.filter((record) => record.data.kind === 'series').map((record) => [record.id, record]));
+  const overrides = collectOverrides(normalized);
+  const output = [];
+  for (const override of Object.values(overrides)) {
+    if (!override.data.titleOverride) continue;
+    const source = series.get(override.data.seriesId);
+    if (source) {
+      const { date } = override.data;
+      output.push(...buildSeriesOccurrences(source, date, date, overrides));
+    }
+  }
+  return output;
+}
+
 function summarizeOccurrences(occurrences) {
   const list = Array.isArray(occurrences) ? occurrences : [];
   const skipped = list.filter((item) => item.skipped).length;
@@ -166,9 +186,21 @@ function summarizeOccurrences(occurrences) {
   };
 }
 
+function occurrencePatch(records, item, patch) {
+  const id = item.id || makeOccurrenceId(item.sourceId, item.date);
+  const previous = records[id];
+  const data = previous && !previous.deletedAt ? previous.data : {};
+  return {
+    id,
+    data: { ...data, kind: 'occurrence', seriesId: item.sourceId, date: item.date, ...patch }
+  };
+}
+
 module.exports = {
+  occurrencePatch,
   addDays,
   derivePlanOccurrences,
+  editedPlanOccurrences,
   formatDate,
   getWeekDates,
   makeOccurrenceId,

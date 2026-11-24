@@ -1,11 +1,11 @@
-# 生活记忆 life · 正式发布检查表
+# 生活记忆 life · 体验与正式发布检查表
 
-项目已配置生产 API 域名 `https://wx.yzflab.top`；这不代表 DNS、HTTPS、服务端或体验版真机验收已经通过。逐项完成下列核验后再提交微信审核。
+候选构建 **1.0.4** 使用 `https://wx.yzflab.top`。先按 [v2.12 版本说明](release-v2.12-notes.md) 部署服务端并确认线上版本，再上传体验版。完成真机验收后提交微信审核。
 
 ## 1. 先补齐不可由代码代填的信息
 
-- [ ] 确定运营主体名称、联系邮箱、个人信息保护联系方式、生效日期；替换 `miniprogram/pages/legal/legal.js` 中全部 `【…】` 占位符。
-- [ ] 确定实际调用的 DeepSeek 服务主体与隐私政策链接，替换第三方说明中的占位符。
+- [x] 运营者显示名 Soy Sauce、公开联系邮箱已填入小程序法律页及对应文档，协议自首次正式发布之日起生效。
+- [ ] 正式版关闭个性化 AI。体验版支持单独同意开启，首登默认使用本机文案。
 - [ ] 确认正式域名 `wx.yzflab.top` 的服务器地区、接入商和部署用户。若在中国大陆境内提供互联网信息服务，按实际主体和接入地完成适用的备案/变更流程；不要在未完成前开放正式服务。
 - [ ] 确认 `miniprogram/config/runtime.js` 保持现有正式域名 `https://wx.yzflab.top`；不要使用 IP、端口、HTTP、`localhost` 或改写登录路径。
 - [ ] **确认 `server/.env.example` 与 `server/.env.production.example`（两者均入库）里的敏感键全部留空**：`WX_APPID` / `WX_SECRET` / `WX_REMINDER_TEMPLATE_ID` / `DB_PASSWORD` / `AI_SECRET_ENCRYPTION_KEY` / `MYSQL_ROOT_PASSWORD` 等不得填入真实值。此前这两个模板曾各被写进真实凭证，而旧密钥扫描器只匹配 `sk-` 与 `Bearer`，两次都误报通过；现已由 `tests/secret-scan.test.js` 与 `server/scripts/check-source-secrets.js` 双重看住。**曾被写进模板的凭据一律按已泄露处理并轮换**（重发 AppSecret、重置库密码、重建 AI 加密密钥）。
@@ -13,14 +13,13 @@
 ## 2. 生产基础设施
 
 - [ ] 从 `server/.env.production.example` 创建仅服务器可读的 `.env`，设置 `DEV_MODE=0`、`BIND_HOST=127.0.0.1`、`REQUIRE_HTTPS=1`、`HEALTH_DETAILS=0`。
-- [ ] 配置正式 `WX_APPID`、`WX_SECRET`、订阅模板 ID、独立随机 `AI_SECRET_ENCRYPTION_KEY`、数据库密码；这些值不得进入 Git、日志、截图或客服消息。
+- [ ] 配置正式 `WX_APPID`、`WX_SECRET`、订阅模板 ID、数据库密码；这些值不得进入 Git、日志、截图或客服消息。
 - [ ] 使用 [Caddyfile.example](../server/deploy/Caddyfile.example) 配置 HTTPS，先验证证书、`/api/health`、`/api/*` 和 `/ws`；Node 的 8787 端口只允许本机反代访问。
-- [ ] 在微信后台配置 request/socket 合法域名 `https://wx.yzflab.top` 和 `wss://wx.yzflab.top` 以及业务域名（如后续实际使用）；不配置 IP 和本地地址。
+- [ ] 在微信后台配置 request、downloadFile 和 socket 合法域名 `https://wx.yzflab.top` 和 `wss://wx.yzflab.top` 以及业务域名（如后续实际使用）；不配置 IP 和本地地址。
 - [ ] 使用 [mysql-production-init.sql.example](../server/deploy/mysql-production-init.sql.example) 创建低权限运行账号。由独立迁移账号执行 `npm run db:migrate`，生产服务保持 `DB_AUTO_CREATE=0` 和 `DB_RUN_MIGRATIONS=0`。
 - [ ] 安装并启用 `life-sync.service`、`life-backup.service`、`life-backup.timer`；确认 `systemctl status` 和 `systemctl list-timers` 正常。
-- [ ] **部署顺序**：凡改动记录字段白名单（`miniprogram/utils/record-validation.js`，server 侧经 `server/validation.js` re-export）的小程序版本，必须先部署 server、再上传对应小程序版本；顺序颠倒会造成旧服务端 422、写入进「待同步-被拒」（2026-09-24 aiConsent 事故）。**v2.11 再次触碰白名单**（settings 新增 `theme:'auto'`、`habitReminderEnabled`、`billReminderEnabled`、`habitReminderTime`）：旧服务端收到这些字段会 422 并把主题保存打进 rejectedWrites，必须先部署 v2.11 server 再上传 v2.11 小程序。兼容性边界（如实宣传）：新服务端 + 旧小程序可正常运行；旧服务端 + 新小程序会出现上述 422，不可接受。
-- [ ] **v2.11 数据库迁移**：新增 `reminder_credits` 表（`server/db/schema.sql`）。生产环境必须由迁移账号先执行 `npm run db:migrate` 再启动新版 server——`DB_RUN_MIGRATIONS=0` 时启动脚本会因缺表直接失败（verifySchema 已把该表列入必需表），这是有意的部署闸门而非故障。
-- [ ] **v2.11 提醒模板配置**：在微信后台另行申请「习惯打卡提醒」「还款提醒」两个订阅消息模板（字段结构对齐现有 thing1/time2），填入 `.env` 的 `WX_HABIT_REMINDER_TEMPLATE_ID` / `WX_BILL_REMINDER_TEMPLATE_ID`；`HABIT_REMINDER_HOUR` 可选（默认 20）。两个键留空时对应提醒静默停用（capabilities 返回 enabled:false），互不影响；未申请模板前上传小程序版，开关开启会提示「服务端未开启」。
+- [ ] **v2.12 部署顺序**：归档备份后用迁移账号执行 `npm run db:migrate`，核对 `records.seq`、`records.seq_fingerprint` 和 `owner_seq`。安装依赖并确认共享模块可加载，再启动新版服务端。线上健康检查返回预期版本后上传体验版。
+- [x] **生产提醒模板配置**已在微信后台选用「每日习惯记录提醒」和「账单到期提醒」。服务端 `20261123.3` 已加载两者及原有日程提醒，使用各自的模板字段。真实订阅与送达在下方真机步骤验收。
 - [ ] **v2.11 服务端时区**：习惯提醒时间（`habitReminderTime` / `HABIT_REMINDER_HOUR`）与还款「到期前 2 天」窗口都按**服务器本地日历**计算。`deploy/life-sync.service` 已内置 `Environment=TZ=Asia/Shanghai`；云主机默认 UTC 时若删掉该行，20:00 的提醒会落到北京时间凌晨 4 点。部署后用 `date` 或 `timedatectl` 核对 server 进程的实际时区。
 - [ ] **打包与共享工具**：服务端部署物必须用 `RELEASE_VERSION=<版本> node server/scripts/pack-release.js` 现打（含 `server/**` 与共享的 `miniprogram/utils/**` 及 manifest）；仓库根目录的 `life-sync-*.tar.gz` 是历史归档，**不得充当新版包**。上传前核对 `.manifest.json` 的文件数与 `miniprogram/utils/record-validation.js` 的 sha256。
 - [ ] **启动前模块加载检查**：新版共享工具先就位（解包 + `npm ci --omit=dev`），再在解包目录执行 `node server/scripts/check-runtime-modules.js <解包>/server`（全部模块 require 通过），**然后**启动新版 server，**最后**上传小程序版本。任何 `Cannot find module` 都必须先修复再启动。
@@ -29,6 +28,7 @@
 
 - [ ] 运行一次 `server/scripts/backup-mysql.sh`，确认输出的 `.sql.gz` 能通过 `gzip -t`。
 - [ ] 在隔离空库做一次恢复演练：`gzip -dc backup.sql.gz | mysql ...`，核对记录数后销毁演练库。
+- [ ] 在隔离目录恢复头像归档，确认同一账号可以读取恢复的图片。
 - [ ] 确认备份目录权限仅限运维账号；默认 30 天保留策略符合实际运维安排。
 - [ ] 确认账户删除会删除资料、记录、会话、提醒和 AI 缓存；导出接口只允许当前登录用户读取自己的记录。
 
@@ -36,14 +36,14 @@
 
 - [ ] 微信后台《用户隐私保护指引》逐项与 [PRIVACY.md](PRIVACY.md) 一致；本版本不申报、不请求手机号能力。
 - [ ] 小程序内可从登录页和「我的」页看到用户协议、隐私政策、第三方说明、JSON 导出和永久删除入口。
-- [ ] 审核说明明确：这是手工记录工具；不读取真实银行/支付/征信数据，不含图片、文件或音频上传；个性化 AI 默认关闭且须用户主动开启。
+- [ ] 审核说明明确：这是手工记录工具；不读取真实银行/支付/征信数据，提供剪贴板导出与粘贴备份恢复；首发不调用外部 AI 服务。
 - [ ] 审核账号可以完成登录并抵达所有核心页；正式/体验版不会写入开发演示数据。
 - [ ] 上传前检查小程序名称、类目、简介、截图、客服联系方式和功能描述与实际产品一致，不把财务统计表述为投资、借贷或专业建议。
 
 ## 5. 自动检查与真机验收
 
 - [ ] CI `Verify life miniprogram` 通过：语法检查、全量测试、依赖审计和源代码密钥扫描。
-- [ ] 本地运行 `npm run security:scan --prefix server` 与 `npm run release:check --prefix server`；后者必须通过才允许上传正式版。
+- [ ] 运行 `npm run security:scan --prefix server`。正式发布前在具备完整源码及受控配置的环境运行 `npm run release:check --prefix server`。
 - [ ] 同一部手机使用 5G 完整验收：微信登录、跳过昵称、进入首页、保存一条记录、退出并重新进入后仍能读到该记录；以实际 `POST /api/login` 与数据读写结果为准。
 - [ ] 在第二个微信账号下确认看不到第一个账号的记录；第一个账号再次登录仍能读取原记录。
 - [ ] 真机 HTTPS 登录、编辑昵称、退出/重新登录、账户导出和账户删除。
@@ -64,7 +64,7 @@
 - [ ] 点击反馈验收：全部可点元素（`view` / `button`）都带 `hover-class` 且显式声明 `hover-start-time` / `hover-stay-time`；`text` 组件不支持 `hover-class`，文件里剩余的 6 处可点 `text` 是白名单（落在 `> text:nth-child` 类型选择器或行内文本流里，换标签会改坏布局）。按压过渡一律 ≤ 100ms，不得退回微信默认的 `hover-stay-time: 400ms`（见 `tests/tap-feedback.test.js`）。真机上逐页确认点下去立刻有可见反馈。
 - [ ] 编译噪音验收：开发者工具「详情 → 本地设置」的**「启用数据预拉取」必须保持关闭**（`project.private.config.json` 的 `preloadBackgroundData: false`）。开着但项目没有 `preloadRule` / 预拉取下载地址时，每次编译都会弹 `系统错误，错误码：6000100,unbind download url` 模态框，**模态框会盖住模拟器、直接吞掉点击**。本项目全仓没有任何预拉取 API 调用，必须保持关闭；不得在 `app.json` 里引入 `preloadRule`。
 - [ ] 点击跟手性验收（真机）：Tab 切换、列表卡片、筛选 chip、弹层按钮各点 3 次，确认按压态随手指出现与消失、松手后不残留。模拟器实测 `switchTab` 从发起到 complete 约 222ms（其中业务代码只占约 16ms，其余是框架与模拟器开销），**模拟器手感不能作为验收依据，必须在真机上确认**。
-- [ ] 设置信息架构验收：在「我的」页滚到底，确认「数据与隐私」一级只有 **4 行**（个性化 AI 文案开关 / 隐私与合规 / 数据管理 / 提醒设置，v2.11 起新增第 4 行），且「永久删除账户与数据」「退出当前账号」位于**独立的「账号」卡**内、不与普通设置同卡——不可逆操作必须隔离，这是隐私类应用的安全不变量（见 `tests/mine-settings.test.js`）。点「隐私与合规」应进入 `pages/legal/legal` 并能切换隐私政策 / 服务协议 / 第三方说明三个 tab；点「数据管理」应弹出底部弹层且悬浮导航同时隐藏，四个动作（导出云端备份 / 复制本机备份 / 重建本机缓存 / 清理示例内容）执行后弹层必须自动收起；点「提醒设置」应弹出额度与续订弹层（不新增页面路由）。
+- [ ] 「我的 → 设置」提供主题、提醒、隐私与合规及数据管理。验证三份协议可打开，数据管理支持剪贴板导出和粘贴 JSON，退出和注销位于账号区域。
 - [ ] 新建未来一次性定时日程，验证订阅同意、到点跳转；拒绝订阅时日程仍保存。
 - [ ] v2.11 深色模式验收：iOS/Android 系统深浅切换时已打开的页面实时跟随（选「跟随系统」后）；auto 下系统导航栏与底栏在 JS 执行前就有正确底色（冷启动观察）；切回具体主题后不再跟随系统；旧版体验版打开新版设置记录时回退雾林且不报错。
 - [ ] v2.11 提醒矩阵验收：习惯页开启「打卡提醒」→ 弹订阅授权 → 同意后行副文案显示剩余次数；当天保持零打卡，到提醒时间收到订阅消息且落地页为习惯页；当日打卡后不再收到；同日绝不重发。负债账户填 `dueDay`/`currentBill` 并开启「还款提醒」，到期前 2 天（含当天）收到提醒且落地页为记账页。额度用完后页内出现续订横幅、`「我的 → 提醒设置」`可续订；拒绝订阅时开关仍生效但额度为 0（不发），不反复弹订阅。
@@ -72,15 +72,23 @@
 - [ ] v2.11 最近记录验收：今日页最近记录行可点，按类型直达对应页面；点记账行进入记账页并直接弹出该笔流水编辑弹层；习惯/日程/书影音/体重行均可跳转且带按压反馈。
 - [ ] 断网新增记录后恢复网络，确认队列只同步一次；再验证历史月报、随记搜索和时间线。
 - [ ] 若登录重试仍失败，按时间核对小程序错误类别/耗时/服务端失败阶段、Nginx 访问日志和服务端 `event=login` 记录。有 HTTP 记录时按状态码定位；没有 HTTP 记录时结合 TCP 抓包定位连接重置发生端。不得从日志记录或截图中收集 code、令牌、手机号或密钥。
-- [ ] 开启 AI 后验证提示文案；关闭后确认不再请求 AI、缓存文案被清除且本机规则文案仍正常显示。
+- [ ] 正式版隐藏个性化 AI 开关，今日与月报使用本机文案。体验版先验证未同意时不请求外部 AI，再验证开启、关闭和模型失败时的显示。
 - [ ] 使用 `curl -fsS https://wx.yzflab.top/api/health` 检查健康状态；生产响应不得泄漏数据库名、开发模式或密钥。
 
 ## 6. 发布与回滚
 
-- [ ] 上传前确认 `miniprogram/config/build.js` 的构建版本唯一；每次上传递增 `YYYYMMDD.N` 后缀。当前源码候选版本为 `20260924.8`，未上传前不得作为体验版验收证据。
+- [ ] 上传前确认 `miniprogram/config/build.js` 的构建版本唯一；以语义化版本管理正式候选。本次候选为 `1.0.4`，上传后再填写下方记录。提审前核对手机打开的体验包版本。
 - [ ] 发布记录写明构建版本、源码 commit、上传时间、实际 API 域名、体验版验收设备/网络和结果；故障报告使用同一构建版本。
 - [ ] 先小范围体验版验收，再提交审核；不要在审核中临时改变数据收集范围、域名或第三方 AI 行为。
 - [ ] 记录当前可用版本、数据库迁移时间和备份文件名；保留上一版体验版作为回退版本，以及上一版服务端构建物。
 - [ ] 若发布后异常：先将流量切回上一稳定服务端版本，必要时回退小程序版本；数据库只通过已演练的备份恢复，不使用破坏性 Git 命令覆盖用户数据。
 
 此清单提高可发布性，但备案、平台审核和具体法律义务仍以主管部门、接入商和微信后台的实时要求为准。
+
+### 上传记录
+
+| 小程序构建 | 上传时间（北京时间） | 源码 | API | 验证 |
+|---|---|---|---|---|
+| 1.0.1 | 2026-11-23 14:39:41 | `28efddc` 加当时工作区改动 | `https://wx.yzflab.top`，服务端 `20261123.2` | 微信开发者工具上传成功。服务端使用测试记录验证 AI 生成成功。待设为体验版并在微信真机上验收。 |
+| 1.0.2 | 2026-11-23 14:51:51 | `28efddc` 加当时工作区改动 | `https://wx.yzflab.top`，服务端 `20261123.2` | 微信开发者工具上传成功。记账页改用顶部录入按钮，布局回归和模板编译通过。待设为体验版并在微信真机上验收。 |
+| 1.0.3 | 2026-11-23 15:52:45 | `28efddc` 加当时工作区改动 | `https://wx.yzflab.top`，服务端 `20261123.2` | 微信开发者工具上传成功。首页首屏下发量从 68,315 降至 2,929 字符（同一份 Node 测试数据），76 项测试通过。待设为体验版并在真机复测。 |

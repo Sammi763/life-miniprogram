@@ -40,7 +40,8 @@ assert.deepStrictEqual(monthly, { income: 500, expense: 200, balance: 300, trans
 
 const alerts = buildBillAlerts(accounts, money, new Date('2026-09-04T10:00:00'));
 assert.deepStrictEqual(alerts, [{
-  id: 'credit', name: '信用卡', dueDate: '2026-09-08', daysLeft: 4, currentBill: 888, minimumPayment: 100
+  id: 'credit', name: '信用卡', dueDate: '2026-09-08', daysLeft: 4,
+  currentBill: 888, paidAmount: 0, remainingBill: 888, minimumPayment: 100
 }]);
 
 const categoryBudget = buildCategoryBudgetProgress(money, { 餐饮: 150, 交通: 100 }, '2026-09');

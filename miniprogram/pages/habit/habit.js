@@ -3,16 +3,34 @@ const sync = require('../../utils/sync');
 const ui = require('../../utils/ui');
 const habitUtils = require('../../utils/habit-utils');
 const reminderClient = require('../../utils/reminder-client');
+const { returnToSearch } = require('../../utils/search-return');
+const { consumePendingAction, ACTIONS } = require('../../utils/pending-open');
 const { syncTabBar, attachOverlayWatcher, TAB } = require('../../utils/tabbar');
 const theme = require('../../utils/theme');
 const share = require('../../utils/share');
 
+const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日'];
+
+function weekdayOptions(days) {
+  return WEEKDAYS.map((label, index) => ({ label, bit: 1 << index, selected: Boolean(days & (1 << index)) }));
+}
+
+const HABIT_PRESETS = [
+  { name: '喝水', mode: 'count', target: '8', unit: '杯' },
+  { name: '阅读', mode: 'value', target: '20', unit: '分钟' },
+  { name: '睡前整理', mode: 'check', target: '1', unit: '' }
+];
+
 Page({
   data: {
+    habitPresets: HABIT_PRESETS,
     offline: false,
     habits: [],
     sheetShow: false,
     form: { id: '', name: '', mode: 'check', target: '1', unit: '', pinned: false },
+    scheduleDays: habitUtils.EVERY_DAY,
+    customSchedule: false,
+    weekdayOptions: [],
     modes: [{ k: 'check', label: '勾选' }, { k: 'count', label: '计数' }, { k: 'value', label: '数值' }],
     valueSheetShow: false,
     valueForm: { id: '', name: '', unit: '', value: '' },
@@ -20,6 +38,8 @@ Page({
     undoShow: false,
     /* 近 12 周历史热力图（展开单个习惯） */
     historyShow: '',
+    historyDate: '',
+    returnSearch: false,
     historyGrid: [],
     historyRange: '',
     minDate: '',
@@ -28,55 +48,103 @@ Page({
     backfillSheetShow: false,
     backfillForm: { habitId: '', name: '', mode: 'check', unit: '', date: '', value: '', hadEntry: false },
     /* 打卡提醒（v2.11 提醒矩阵）：开关 + 提醒时间 + 剩余额度；额度耗尽显示续订横幅 */
-    habitReminder: { enabled: false, capEnabled: false, credits: 0, time: reminderClient.DEFAULT_HABIT_TIME, banner: '' }
+    habitReminder: { enabled: false, capEnabled: false, credits: 0, time: reminderClient.DEFAULT_HABIT_TIME, state: 'off', statusText: '未开启', banner: '' }
   },
   unsub: null,
   /* 最近一次能力查询结果（enabled/templateId/credits），onShow 刷新 */
   reminderCaps: null,
+  openFocus(event) {
+    const id = event.currentTarget.dataset.id;
+    const record = store.state.records.habit[id];
+    if (!record || record.deletedAt || !record.data) return;
+    wx.navigateTo({ url: '/pages/focus/focus?kind=habit&id=' + encodeURIComponent(id) + '&title=' + encodeURIComponent(record.data.name) });
+  },
+
   onLoad() {
-    theme.applyToPage(this);
     // 弹层打开时隐藏悬浮导航：自定义 tabBar 压在页面之上，「保存」按钮会被它盖住（详见 utils/tabbar.js）
     attachOverlayWatcher(this);
-    this.unsub = store.subscribe(() => this.render());
-    this.render();
+    this.unsub = ui.bindStore(this, ['habit', 'settings', '__sync__'],
+      () => this.render(),
+      () => this.renderSyncState());
   },
-  onShow() {
-    theme.applyToPage(this); share.enableShareMenu(); this.render();
+  onShow() { this.__pageHidden = false; theme.applyToPage(this); share.enableShareMenu(); this.render();
+    this.consumePendingOpen();
     this.refreshReminderCaps();
   },
+  /*
+   * 搜索深链（U07）：结果是打卡记录（entry id）—— 展开对应习惯的历史热力图，
+   * 让用户看到这条记录所在的日期；定义本身不可直接编辑。
+   */
+  consumePendingOpen() {
+    const intent = consumePendingAction('habit');
+    this.setData({ returnSearch: intent.action === ACTIONS.SEARCH });
+    if (intent.action === ACTIONS.CREATE) return this.openAdd();
+    if (!intent.id) return;
+    const entry = store.state.records.habit[intent.id];
+    if (!entry || entry.deletedAt || !entry.data || entry.data.kind !== 'entry') return;
+    const habitId = entry.data.habitId;
+    const def = store.state.records.habit[habitId];
+    if (!def || def.deletedAt || !def.data) return;
+    const today = sync.fmtDate(new Date());
+    const recent = habitUtils.buildHabitHistory(store.state.records.habit, def, today);
+    const date = entry.data.date;
+    const anchor = date < recent.start ? date : today;
+    const history = anchor === today ? recent : habitUtils.buildHabitHistory(store.state.records.habit, def, anchor);
+    this.setData({
+      historyShow: habitId, historyDate: date, historyGrid: history.grid,
+      historyRange: history.start + ' 至 ' + anchor, minDate: recent.start
+    }, () => {
+      if (typeof wx.pageScrollTo === 'function') wx.pageScrollTo({ selector: '#habit-' + habitId, duration: 200 });
+    });
+  },
+  returnToSearch,
   async refreshReminderCaps() {
     const caps = await reminderClient.fetchCaps();
     if (!caps) return;
     this.reminderCaps = caps;
-    this.render();
+    if (this.__pageHidden) return;
+    ui.diffSetData(this, { habitReminder: reminderClient.buildReminderView(store.state.records, 'habit', caps) });
   },
   onShareAppMessage: share.onShareAppMessage('habit'),
   onShareTimeline: share.onShareTimeline('habit'),
+  onHide() { this.__pageHidden = true; },
   onUnload() {
+    this.__pageHidden = true;
     this.unsub && this.unsub();
     clearTimeout(this.__undoTimer);
+  },
+  /* 同步状态变化只更新状态横幅，不做整页重算（性能方案 §5） */
+  renderSyncState() {
+    ui.diffSetData(this, { offline: store.state.syncState === 'offline' });
   },
   retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() { sync.pull().then(() => wx.stopPullDownRefresh()); },
 
   render() {
     const s = store.state;
-    const t = sync.fmtDate(new Date());
+    const now = new Date();
+    const t = sync.fmtDate(now);
     const defs = [], entries = {};
     for (const r of Object.values(s.records.habit)) {
       if (r.deletedAt || !r.data) continue;
       if (r.data.kind === 'def') defs.push(r);
       else entries[r.data.habitId + '|' + r.data.date] = r;
     }
+    const streakDates = [t];
     const habits = defs.map((d) => {
       const e = entries[d.id + '|' + t];
       const val = e ? Number(e.data.value) || 0 : 0;
       const target = habitUtils.entryTarget(e, d);
+      const scheduled = habitUtils.isScheduled(d, t);
       // 连续天数：从今天往回数；完成判定统一走 habit-utils（entry 快照优先，缺省回退当前目标）
       let streak = 0;
       for (let i = 0; i < 365; i++) {
-        const dd = new Date(); dd.setDate(dd.getDate() - i);
-        const ee = entries[d.id + '|' + sync.fmtDate(dd)];
+        if (!streakDates[i]) {
+          const date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+          streakDates[i] = sync.fmtDate(date);
+        }
+        if (!habitUtils.isScheduled(d, streakDates[i])) continue;
+        const ee = entries[d.id + '|' + streakDates[i]];
         const ok = habitUtils.isEntryDone(ee, d);
         if (ok) streak++;
         else if (i > 0) break;
@@ -85,37 +153,41 @@ Page({
       return {
         id: d.id, name: d.data.name, mode: d.data.mode, unit: d.data.unit || '',
         pinned: Boolean(d.data.pinned),
-        target, value: val,
+        target, value: val, scheduled,
         done: habitUtils.isEntryDone(e, d),
         text: d.data.mode === 'check' ? (val >= 1 ? '已完成' : '今日未打卡') : val + ' / ' + target + (d.data.unit ? ' ' + d.data.unit : ''),
-        streak
+        streak,
+        restText: scheduled ? '' : '休息日 · '
       };
     });
     // 排序可预期：置顶 → 今日未完成在前 → 连续天数多的在前 → 名称
-    habits.sort((a, b) => (b.pinned - a.pinned) || (a.done - b.done) || (b.streak - a.streak) || a.name.localeCompare(b.name, 'zh-Hans-CN'));
+    habits.sort((a, b) => (b.scheduled - a.scheduled) || (b.pinned - a.pinned) || (a.done - b.done) || (b.streak - a.streak) || a.name.localeCompare(b.name, 'zh-Hans-CN'));
     /* 展开中的历史网格随数据变化重建（补录后立即看到格子变色） */
     let historyGrid = this.data.historyGrid, historyRange = this.data.historyRange, minDate = this.data.minDate;
     if (this.data.historyShow) {
       const def = defs.find((d) => d.id === this.data.historyShow);
       if (def) {
-        const history = habitUtils.buildHabitHistory(s.records.habit, def, t);
+        const recent = habitUtils.buildHabitHistory(s.records.habit, def, t);
+        const date = this.data.historyDate;
+        const anchor = date && date < recent.start ? date : t;
+        const history = anchor === t ? recent : habitUtils.buildHabitHistory(s.records.habit, def, anchor);
         historyGrid = history.grid;
-        historyRange = history.start + ' 至 ' + t;
-        minDate = history.start;
+        historyRange = history.start + ' 至 ' + anchor;
+        minDate = recent.start;
       } else {
         this.data.historyShow = '';
         historyGrid = []; historyRange = ''; minDate = '';
       }
     }
-    this.setData({
-      habits: habits.map((item) => ({ ...item, streakText: item.streak > 0 ? item.streak + ' 天' : '' })),
+    ui.diffSetData(this, {
+      habits: habits.map((item) => ({ ...item, streakText: item.streak > 0 ? item.streak + ' 次' : '' })),
       offline: s.syncState === 'offline',
       today: t,
       historyGrid, historyRange, minDate,
       habitReminder: reminderClient.buildReminderView(s.records, 'habit', this.reminderCaps)
     });
     /* 角标：今日未完成的习惯数，打卡后即时刷新 */
-    const undone = habits.filter((item) => !item.done).length;
+    const undone = habits.filter((item) => item.scheduled && !item.done).length;
     syncTabBar(this, TAB.HABIT, { [TAB.HABIT]: undone });
   },
 
@@ -188,14 +260,14 @@ Page({
   toggleHistory(e) {
     const id = e.currentTarget.dataset.id;
     if (this.data.historyShow === id) {
-      this.setData({ historyShow: '', historyGrid: [], historyRange: '', minDate: '' });
+      this.setData({ historyShow: '', historyDate: '', historyGrid: [], historyRange: '', minDate: '' });
       return;
     }
     const t = sync.fmtDate(new Date());
     const def = store.state.records.habit[id];
     if (!def || def.deletedAt || !def.data) return;
     const history = habitUtils.buildHabitHistory(store.state.records.habit, def, t);
-    this.setData({ historyShow: id, historyGrid: history.grid, historyRange: history.start + ' 至 ' + t, minDate: history.start });
+    this.setData({ historyShow: id, historyDate: '', historyGrid: history.grid, historyRange: history.start + ' 至 ' + t, minDate: history.start });
   },
 
   // ---- 补录/修正过去日期（限近 12 周，与历史视图一致）----
@@ -339,8 +411,11 @@ Page({
   openEditHabit(id) {
     const r = store.state.records.habit[id];
     if (!r || r.deletedAt || !r.data) return;
+    const days = habitUtils.scheduledWeekdays(r, sync.fmtDate(new Date())) || habitUtils.EVERY_DAY;
+    this.initialScheduleDays = days;
     this.setData({
-      sheetShow: true,
+      sheetShow: true, scheduleDays: days, customSchedule: days !== habitUtils.EVERY_DAY,
+      weekdayOptions: weekdayOptions(days),
       form: {
         id,
         name: r.data.name || '',
@@ -371,7 +446,29 @@ Page({
     });
   },
 
-  openAdd() { this.setData({ sheetShow: true, form: { id: '', name: '', mode: 'check', target: '1', unit: '', pinned: false } }); },
+  openAdd() {
+    this.initialScheduleDays = habitUtils.EVERY_DAY;
+    this.setData({
+      sheetShow: true, scheduleDays: habitUtils.EVERY_DAY, customSchedule: false,
+      weekdayOptions: weekdayOptions(habitUtils.EVERY_DAY),
+      form: { id: '', name: '', mode: 'check', target: '1', unit: '', pinned: false }
+    });
+  },
+  chooseSchedule(event) {
+    const customSchedule = event.currentTarget.dataset.mode === 'custom';
+    const days = customSchedule ? this.data.scheduleDays : habitUtils.EVERY_DAY;
+    this.setData({ customSchedule, scheduleDays: days, weekdayOptions: weekdayOptions(days) });
+  },
+  toggleWeekday(event) {
+    const bit = Number(event.currentTarget.dataset.bit);
+    const days = this.data.scheduleDays ^ bit;
+    this.setData({ scheduleDays: days, weekdayOptions: weekdayOptions(days) });
+  },
+  applyPreset(event) {
+    if (this.data.form.id) return;
+    const preset = HABIT_PRESETS.find((item) => item.name === event.currentTarget.dataset.name);
+    if (preset) this.setData({ form: { ...this.data.form, ...preset } });
+  },
   closeSheet() { if (!this.data.saving) this.setData({ sheetShow: false }); },
   setName(e) { this.setData({ 'form.name': e.detail.value }); },
   setTarget(e) { this.setData({ 'form.target': e.detail.value }); },
@@ -394,6 +491,16 @@ Page({
     const target = mode === 'check' ? 1 : targetInput;
     const data = { kind: 'def', name, mode, target, unit };
     if (f.pinned) data.pinned = true;
+    const days = this.data.scheduleDays;
+    if (!days) return wx.showToast({ title: '请至少选择一个星期几', icon: 'none' });
+    const existing = f.id && store.state.records.habit[f.id];
+    if (f.id && (!existing || existing.deletedAt)) {
+      return wx.showToast({ title: '这个习惯已删除', icon: 'none' });
+    }
+    const schedule = existing && days === this.initialScheduleDays
+      ? existing.data.schedule
+      : habitUtils.updateSchedule(existing, sync.fmtDate(new Date()), days);
+    if (schedule) data.schedule = schedule;
     if (ui.isRepeatedTap(this, 'habit-save', 800)) return;
     this.setData({ saving: true });
     sync.upsert('habit', data, f.id || undefined);

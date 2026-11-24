@@ -18,7 +18,24 @@ function sha256(file) {
 }
 
 function main() {
-  const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'life-pack-out-'));
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'life-pack-fixture-'));
+  const outDir = path.join(fixture, 'actual-package');
+  for (const relative of ['server/scripts/pack-release.js', 'server/server.js', 'miniprogram/utils/record-validation.js']) {
+    const target = path.join(fixture, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(path.join(root, relative), target);
+  }
+  for (const relative of ['server/db/backups/fixture.sql.gz', 'server/data/avatars/fixture.jpg', 'server/.env', 'server/debug.log']) {
+    const target = path.join(fixture, relative);
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, 'fixture');
+  }
+  execFileSync('node', ['server/scripts/pack-release.js'], {
+    cwd: fixture,
+    env: { ...process.env, RELEASE_VERSION: VERSION }
+  });
+  const fixtureManifest = JSON.parse(fs.readFileSync(path.join(fixture, 'dist', 'life-sync-release-' + VERSION + '.tar.gz.manifest.json')));
+  assert.ok(!fixtureManifest.files.some(({ path }) => /backups|avatars|\.env|debug\.log/.test(path)));
   const unpackDir = fs.mkdtempSync(path.join(os.tmpdir(), 'life-pack-unpack-'));
 
   /* ---------- 1. 现打新版包：产物、manifest、共享工具在列 ---------- */
@@ -63,7 +80,7 @@ function main() {
   }
   assert.ok(failed, '缺少 record-validation.js 时模块检查必须非零退出');
 
-  fs.rmSync(outDir, { recursive: true, force: true });
+  fs.rmSync(fixture, { recursive: true, force: true });
   fs.rmSync(unpackDir, { recursive: true, force: true });
   console.log('RELEASE_PACKAGING_TEST_PASSED');
 }

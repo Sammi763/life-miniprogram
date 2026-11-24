@@ -1,12 +1,12 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，以下为已同步到本机的数据</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
+<view wx:if="{{offline}}" class="banner"><text>网络连接异常，以下统计基于已有记录</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
 
 <view class="report-head">
   <view class="report-arrow" bindtap="previousMonth" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">‹</view>
   <view class="h1">{{monthText}}</view>
   <view class="report-arrow {{canNext ? '' : 'report-arrow-disabled'}}" bindtap="nextMonth" hover-class="{{canNext ? 'tap-pressed' : 'none'}}" hover-start-time="20" hover-stay-time="90">›</view>
 </view>
-<view class="privacy-note">仅你可见 · 所有统计均在本机根据已同步记录计算</view>
+<view class="privacy-note">仅你可见 · 统计基于你的记录</view>
 
 <view class="card finance-hero">
   <view class="card-title"><text>财务回顾</text><text class="sub">本月结余</text></view>
@@ -22,12 +22,13 @@
 <view class="card">
   <view class="card-title"><text>支出分类 Top 3</text></view>
   <view wx:if="{{finance.topCategories.length === 0}}" class="empty">这个月还没有支出记录</view>
-  <view wx:for="{{finance.topCategories}}" wx:key="category" class="rank-row"><view class="rank-number">{{index + 1}}</view><text class="rank-name">{{item.category}}</text><text>¥{{item.amountText}}</text></view>
+  <view wx:for="{{finance.topCategories}}" wx:key="category" class="rank-row" data-category="{{item.category}}" bindtap="openCategoryDetails" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><view class="rank-number">{{index + 1}}</view><text class="rank-name">{{item.category}}</text><text>¥{{item.amountText}}</text></view>
 </view>
 
+<view class="card"><button class="btn btn-ghost" bindtap="openCategoryDetails" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">查看分类明细</button></view>
 <view wx:if="{{finance.categoryBudgets.length}}" class="card">
   <view class="card-title"><text>分类预算</text><text class="sub">下月建议按近期开销预留</text></view>
-  <view wx:for="{{finance.categoryBudgets}}" wx:key="category" class="category-budget-row">
+  <view wx:for="{{finance.categoryBudgets}}" wx:key="category" class="category-budget-row" data-category="{{item.category}}" bindtap="openCategoryDetails" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
     <view><text>{{item.category}}</text><view class="sub">¥{{item.spentText}} / ¥{{item.budgetText}}<text wx:if="{{item.over}}" class="budget-over"> · 超出 ¥{{item.overText}}</text></view></view>
     <view class="category-budget-side"><text class="{{item.over ? 'money-out' : ''}}">{{item.used}}%</text><view class="sub">建议 ¥{{item.suggestedText}}</view></view>
   </view>
@@ -56,5 +57,5 @@
   <view wx:else class="memory-month-row"><view><view class="life-value">{{life.memory.count}}<text> 条</text></view><view class="sub">记录了 {{life.memory.days}} 天</view></view><view class="memory-month-copy"><view wx:if="{{life.memory.topTags.length}}" class="sub">常用：<text wx:for="{{life.memory.topTags}}" wx:key="tag" class="month-tag">#{{item.tag}}</text></view><view wx:if="{{life.memory.moods.length}}" class="sub">心情：<text wx:for="{{life.memory.moods}}" wx:key="mood" class="month-tag">{{item.mood}} {{item.count}}</text></view></view></view>
 </view>
 
-<view class="card summary-card"><view class="card-title"><text>本月一句话</text><text class="ai-label">{{aiSummaryLoading ? '整理中…' : aiSummaryLabel}}</text></view><view class="summary-text {{aiSummaryFaded ? 'summary-text-faded' : ''}}">{{aiSummary ? aiSummary : summary}}</view><view class="sub summary-note">{{aiConsent ? '仅用于你的生活空间，可在「我的」关闭 AI' : '本机基于本月已同步内容整理'}}</view></view>
+<view class="card summary-card"><view class="card-title"><text>本月一句话</text><text class="ai-label">{{aiSummaryLoading ? '整理中…' : aiSummaryLabel}}</text></view><view class="summary-text {{aiSummaryFaded ? 'summary-text-faded' : ''}}">{{aiSummary ? aiSummary : summary}}</view><view class="sub summary-note">{{aiConsent ? '仅用于你的生活空间' : '根据本月记录整理'}}</view></view>
 </view>

@@ -16,11 +16,12 @@
     "release:check": "node scripts/check-release-config.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.9.0"
   },
   "dependencies": {
     "express": "^5.2.1",
     "mysql2": "^3.14.3",
+    "sharp": "^0.35.5",
     "ws": "^8.18.0"
   }
 }

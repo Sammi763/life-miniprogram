@@ -3,7 +3,6 @@ const sync = require('../../utils/sync');
 const ui = require('../../utils/ui');
 const {
   MOODS,
-  filterMemories,
   groupMemoriesByDate,
   makeDraftKey,
   normalizeMemory,
@@ -45,11 +44,18 @@ function safeReadDraft(id) {
     return raw && typeof raw === 'object' ? raw : null;
   } catch (error) { return null; }
 }
+/* 写失败返回 false，调用方决定是否提示 —— 静默失败会让用户以为草稿已保住 */
 function safeWriteDraft(id, value) {
-  try { wx.setStorageSync(makeDraftKey(id), value); } catch (error) { /* storage may be temporarily unavailable */ }
+  try {
+    wx.setStorageSync(makeDraftKey(id), value);
+    return true;
+  } catch (error) { return false; }
 }
 function clearDraft(id) {
-  try { wx.removeStorageSync(makeDraftKey(id)); } catch (error) { /* ignore */ }
+  try {
+    wx.removeStorageSync(makeDraftKey(id));
+    return true;
+  } catch (error) { return false; }
 }
 function dateLabel(value) {
   const today = sync.fmtDate(new Date());
@@ -84,35 +90,58 @@ Page({
   visibleCount: TIMELINE_PAGE_SIZE,
 
   onLoad(options) {
-    theme.applyToPage(this);
-    this.unsub = store.subscribe(() => this.render());
-    this.render();
+    this.unsub = ui.bindStore(this, ['memories', '__sync__'],
+      () => this.render(),
+      () => this.renderSyncState());
     if (options && options.id) this.openEditById(options.id);
     else if (options && options.compose === '1') this.openComposer();
   },
-  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); },
+  openDeleted() { wx.navigateTo({ url: '/pages/activity/activity?mode=deleted' }); },
+
+  onShow() { this.__pageHidden = false; theme.applyToPage(this); share.enableShareMenu(); this.render(); },
   onShareAppMessage: share.onShareAppMessage('memory'),
   onShareTimeline: share.onShareTimeline('memory'),
+  /* 切后台也提交最后一份草稿：进程被杀时 350ms 定时器不会再跑（R05） */
+  onHide() { this.__pageHidden = true; this.commitDraftNow(); },
   onUnload() {
     this.unsub && this.unsub();
+    if (this.data.composerShow) this.commitDraftNow();
     clearTimeout(this.draftTimer);
+    clearTimeout(this.searchTimer);
     clearTimeout(this.__undoTimer);
+  },
+  /* 同步状态变化只更新状态横幅，不做整页重算（性能方案 §5） */
+  renderSyncState() {
+    ui.diffSetData(this, { offline: store.state.syncState === 'offline' });
   },
   retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() { sync.pull().then(() => wx.stopPullDownRefresh()).catch(() => wx.stopPullDownRefresh()); },
   /* 滚到底自动加载更早的随记；底部按钮保留作为兜底 */
   onReachBottom() { if (this.data.hasMore) this.loadMore(); },
 
-  render() {
-    const records = store.state.records.memories || {};
+  computeTimelineModel() {
+    const records = store.state.records.memories;
     const options = {
       keyword: this.data.keyword,
       mood: this.data.selectedMood,
       tag: this.data.selectedTag,
       date: this.data.selectedDate
     };
+    const key = JSON.stringify([store.version('memories'), options]);
+    const cached = this.__timelineModel;
+    if (cached && cached.key === key && cached.records === records) return cached.model;
     const allGroups = groupMemoriesByDate(records, options);
-    const total = filterMemories(records, options).length;
+    const total = allGroups.reduce((sum, group) => sum + group.items.length, 0);
+    const tagCounts = {};
+    recordItems(records).forEach((item) => item.tags.forEach((tag) => { tagCounts[tag] = (tagCounts[tag] || 0) + 1; }));
+    const tags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a] || a.localeCompare(b, 'zh-Hans-CN')).slice(0, 12);
+    const model = { allGroups, total, tags };
+    this.__timelineModel = { records, key, model };
+    return model;
+  },
+
+  render() {
+    const { allGroups, total, tags } = this.computeTimelineModel();
     /*
      * 按天顺序累计下发，直到用完预算；同一天也可能超过预算，用 slice 截断，
      * 避免「一天写了 200 条」把整天内容一次性推给渲染层。
@@ -136,10 +165,7 @@ Page({
         }))
       });
     }
-    const tagCounts = {};
-    recordItems(records).forEach((item) => item.tags.forEach((tag) => { tagCounts[tag] = (tagCounts[tag] || 0) + 1; }));
-    const tags = Object.keys(tagCounts).sort((a, b) => tagCounts[b] - tagCounts[a] || a.localeCompare(b, 'zh-Hans-CN')).slice(0, 12);
-    this.setData({
+    ui.diffSetData(this, {
       offline: store.state.syncState === 'offline',
       groups,
       hasMore: shown < total,
@@ -159,6 +185,9 @@ Page({
   resetTimeline() { this.visibleCount = TIMELINE_PAGE_SIZE; this.render(); },
 
   openComposer() {
+    clearTimeout(this.draftTimer);
+    this.draftDirty = false;
+    this.draftBaseUpdatedAt = undefined;
     const form = emptyForm();
     const draft = safeReadDraft('new');
     if (draft) {
@@ -178,13 +207,19 @@ Page({
   openEditById(id) {
     const record = store.state.records.memories && store.state.records.memories[id];
     if (!record || record.deletedAt || !record.data) return;
+    clearTimeout(this.draftTimer);
+    this.draftDirty = false;
+    this.draftBaseUpdatedAt = Number(record.updatedAt) || 0;
     const source = normalizeMemory(record.data);
     const draft = safeReadDraft(id);
-    const value = draft ? normalizeMemory(draft) : source;
+    const draftFresh = Boolean(draft && (Number.isFinite(draft.baseUpdatedAt)
+      ? draft.baseUpdatedAt === this.draftBaseUpdatedAt
+      : Number(draft.savedAt) >= this.draftBaseUpdatedAt));
+    const value = draftFresh ? normalizeMemory(draft) : source;
     const occurredAt = value.occurredAt || source.occurredAt;
     this.setData({
       composerShow: true,
-      restoredDraft: Boolean(draft && draft.content),
+      restoredDraft: Boolean(draftFresh && draft.content),
       form: {
         id,
         content: value.content,
@@ -195,7 +230,12 @@ Page({
       }
     });
   },
-  closeComposer() { this.setData({ composerShow: false, restoredDraft: false }); },
+  closeComposer() {
+    /* 关闭/返回前先提交最后一段输入：350ms 防抖内的内容不能因为离开页面而丢（R05） */
+    clearTimeout(this.draftTimer);
+    if (!this.commitDraftNow()) return wx.showToast({ title: '草稿保存失败，请尽快保存记录', icon: 'none' });
+    this.setData({ composerShow: false, restoredDraft: false });
+  },
   noop() {},
   onContent(event) { this.setData({ 'form.content': event.detail.value }); this.scheduleDraft(); },
   onDate(event) { this.setData({ 'form.date': event.detail.value }); this.scheduleDraft(); },
@@ -209,19 +249,39 @@ Page({
     this.scheduleDraft();
   },
   scheduleDraft() {
+    this.draftDirty = true;
     clearTimeout(this.draftTimer);
-    this.draftTimer = setTimeout(() => this.saveDraft(), 350);
+    this.draftTimer = setTimeout(() => {
+      this.draftTimer = null;
+      if (!this.commitDraftNow()) {
+        wx.showToast({ title: '草稿保存失败，请尽快保存记录', icon: 'none' });
+      }
+    }, 350);
   },
-  saveDraft() {
+  commitDraftNow() {
+    if (!this.data.composerShow || !this.draftDirty) return true;
     const form = this.data.form;
-    safeWriteDraft(form.id || 'new', {
+    const id = form.id || 'new';
+    const saved = !String(form.content || '').trim() ? clearDraft(id) : safeWriteDraft(id, {
       content: form.content,
       occurredAt: form.date + 'T' + form.time,
       mood: form.mood,
-      tags: normalizeTags(String(form.tagsInput || '').split(/[，,\s]+/))
+      tags: normalizeTags(String(form.tagsInput || '').split(/[，,\s]+/)),
+      savedAt: Date.now(),
+      ...(form.id && { baseUpdatedAt: this.draftBaseUpdatedAt })
     });
+    if (saved) this.draftDirty = false;
+    return saved;
+  },
+  saveDraft() {
+    clearTimeout(this.draftTimer);
+    this.draftDirty = true;
+    this.commitDraftNow();
   },
   saveMemory() {
+    /* 先停掉草稿定时器再清理：否则 350ms 后定时器把已保存的内容重新写成草稿（R05 probe） */
+    clearTimeout(this.draftTimer);
+    this.draftTimer = null;
     const form = this.data.form;
     const data = normalizeMemory({
       content: form.content,
@@ -232,10 +292,25 @@ Page({
     if (!data.content) return wx.showToast({ title: '写下一点此刻的感受吧', icon: 'none' });
     if (!data.occurredAt) return wx.showToast({ title: '请选择发生时间', icon: 'none' });
     if (ui.isRepeatedTap(this, 'memory-save', 800)) return;
-    sync.upsert('memories', data, form.id || undefined);
-    clearDraft(form.id || 'new');
-    this.setData({ composerShow: false, restoredDraft: false });
-    wx.showToast({ title: '已留在时间线', icon: 'success' });
+    const save = (id) => {
+      sync.upsert('memories', data, id);
+      clearDraft(form.id || 'new');
+      this.draftDirty = false;
+      this.setData({ composerShow: false, restoredDraft: false });
+      wx.showToast({ title: '已留在时间线', icon: 'success' });
+    };
+    const current = form.id && store.state.records.memories[form.id];
+    if (form.id && this.draftBaseUpdatedAt !== undefined &&
+        (!current || current.deletedAt || (Number(current.updatedAt) || 0) !== this.draftBaseUpdatedAt)) {
+      this.commitDraftNow();
+      return wx.showModal({
+        title: '这条随记已在其他设备更新',
+        content: '可以把当前内容另存为一条随记。',
+        confirmText: '另存',
+        success: ({ confirm }) => { if (confirm) save(undefined); }
+      });
+    }
+    save(form.id || undefined);
   },
   removeMemory(event) {
     const id = event.currentTarget.dataset.id;
@@ -251,7 +326,12 @@ Page({
     });
   },
   onUndoTap() { ui.performUndo(this); },
-  onKeyword(event) { this.setData({ keyword: event.detail.value }); this.resetTimeline(); },
+  /* 搜索输入 300ms 防抖（与统一搜索页同一策略）：每次按键都全量过滤分组会明显卡顿 */
+  onKeyword(event) {
+    this.setData({ keyword: event.detail.value });
+    clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.resetTimeline(), 300);
+  },
   setFilterMood(event) {
     const mood = event.currentTarget.dataset.mood;
     this.setData({ selectedMood: mood === this.data.selectedMood ? '' : mood });

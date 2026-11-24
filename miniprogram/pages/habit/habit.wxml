@@ -1,14 +1,16 @@
 <view class="theme-page" style="{{themeStyle}}">
 <view wx:if="{{offline}}" class="banner">
-  <text>云端暂不可用，改动已暂存本机</text>
+  <text>网络连接异常</text>
   <view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view>
 </view>
 
-<view wx:for="{{habits}}" wx:key="id" class="card habit-card" bindlongpress="onCardLongpress" data-id="{{item.id}}">
+<button wx:if="{{returnSearch}}" class="btn btn-ghost" bindtap="returnToSearch" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">‹ 返回搜索</button>
+
+<view wx:for="{{habits}}" wx:key="id" id="habit-{{item.id}}" class="card habit-card" bindlongpress="onCardLongpress" data-id="{{item.id}}">
   <view class="habit-row tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="tapHabit" data-id="{{item.id}}" data-mode="{{item.mode}}">
     <view class="habit-info">
       <view class="habit-name">{{item.name}} <text class="habit-streak" wx:if="{{item.streakText}}">连续 {{item.streakText}}</text></view>
-      <view class="sub">{{item.text}}</view>
+      <view class="sub">{{item.restText}}{{item.text}}</view>
     </view>
     <view class="habit-actions">
       <view wx:if="{{item.mode === 'count' && item.value > 0}}" class="habit-btn habit-btn-minus" catchtap="tapHabitMinus" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">−1</view>
@@ -24,14 +26,17 @@
     <view class="habit-history-grid">
       <view wx:for="{{historyGrid}}" wx:for-item="week" wx:for-index="wi" wx:key="wi" class="habit-history-week">
         <view wx:for="{{week}}" wx:for-item="cell" wx:for-index="di" wx:key="di"
-          class="habit-cell lv-{{cell.level}} {{cell.future ? 'is-future' : ''}}"
+          class="habit-cell lv-{{cell.level}} {{cell.future ? 'is-future' : ''}} {{!cell.scheduled && !cell.recorded ? 'is-rest' : ''}} {{historyDate === cell.date ? 'is-selected' : ''}}"
           catchtap="openBackfill" data-id="{{item.id}}" data-date="{{cell.date}}"
           hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"></view>
       </view>
     </view>
-    <view class="habit-history-meta"><text>近 12 周 · 点格子补录</text><text>{{historyRange}}</text></view>
+    <view wx:if="{{historyDate}}" class="sub">定位到 {{historyDate}}</view>
+    <view class="habit-history-meta"><text>近 12 周 · 空心为休息日</text><text>{{historyRange}}</text></view>
+    <view class="sub habit-history-tip">格子太小不好点？用下方「补录」按日期补录更方便。</view>
   </view>
   <view class="habit-edit-row">
+    <view class="habit-edit tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" catchtap="openFocus" data-id="{{item.id}}">专注</view>
     <view class="habit-edit tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" catchtap="toggleHistory" data-id="{{item.id}}">{{historyShow === item.id ? '收起' : '历史'}}</view>
     <view class="habit-edit tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" catchtap="openBackfill" data-id="{{item.id}}">补录</view>
     <view class="habit-edit tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" catchtap="editHabit" data-id="{{item.id}}">管理</view>
@@ -41,10 +46,11 @@
 <view wx:if="{{habits.length === 0}}" class="card"><view class="empty">还没有习惯，点右下角添加一个吧</view></view>
 
 <view class="card reminder-card">
-  <view class="card-title"><text>打卡提醒</text><text class="sub">{{habitReminder.capEnabled ? '每天 ' + habitReminder.time + ' 推送订阅消息' : '到点提醒你补上打卡'}}</text></view>
-  <view class="switch-row"><view><view>每天提醒打卡</view><view class="sub">{{habitReminder.enabled && habitReminder.capEnabled && habitReminder.credits > 0 ? '剩余提醒次数 ' + habitReminder.credits : (habitReminder.enabled && habitReminder.capEnabled ? '提醒额度已用完，可点下方横幅续订' : '开启时需同意订阅消息，一次订阅提醒一次')}}</view></view><switch checked="{{habitReminder.enabled}}" color="{{themeAccent}}" bindchange="onHabitReminderToggle" /></view>
+  <view class="card-title"><text>打卡提醒</text><text class="sub">{{habitReminder.state === 'ready' ? habitReminder.time + ' 提醒当天未达标的习惯' : '到点提醒你补上打卡'}}</text></view>
+  <view class="switch-row"><view><view>提醒未完成的习惯</view><view class="sub">{{habitReminder.statusText}}</view></view><switch checked="{{habitReminder.enabled}}" color="{{themeAccent}}" bindchange="onHabitReminderToggle" /></view>
   <view class="switch-row"><view><view>提醒时间</view><view class="sub">服务端到点推送，可随时调整</view></view><picker mode="time" value="{{habitReminder.time}}" bindchange="onHabitReminderTime"><view class="picker-value tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{habitReminder.time}}</view></picker></view>
   <view wx:if="{{habitReminder.banner}}" class="reminder-banner tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="onReminderRenew">{{habitReminder.banner}}</view>
+  <view class="sub reminder-scope-note">开关表示你想要提醒；能否送达由订阅授权与剩余额度决定 —— 一次订阅对应一次送达，额度用完在上方续订，续订前不会送达。</view>
 </view>
 
 <view class="fab" hover-class="fab-pressed" hover-start-time="20" hover-stay-time="90" bindtap="openAdd">＋</view>
@@ -52,6 +58,12 @@
 <view wx:if="{{sheetShow}}" class="mask" bindtap="closeSheet"></view>
 <view wx:if="{{sheetShow}}" class="sheet" catchtap="noop">
   <view class="sheet-title">{{form.id ? '编辑习惯' : '新增习惯'}}</view>
+  <view wx:if="{{!form.id}}" class="field">
+    <view class="field-label">常用习惯</view>
+    <view class="chips">
+      <view wx:for="{{habitPresets}}" wx:key="name" class="chip" bindtap="applyPreset" data-name="{{item.name}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.name}}</view>
+    </view>
+  </view>
   <view class="field">
     <view class="field-label">名字</view>
     <input value="{{form.name}}" bindinput="setName" placeholder="如：喝水 / 阅读 / 步行" maxlength="12" confirm-type="next" cursor-spacing="24" />
@@ -70,6 +82,17 @@
   <view class="field" wx:if="{{form.mode === 'count' || form.mode === 'value'}}">
     <view class="field-label">单位</view>
     <input value="{{form.unit}}" bindinput="setUnit" placeholder="如 杯 / 步 / 分钟" maxlength="6" confirm-type="done" cursor-spacing="24" />
+  </view>
+  <view class="habit-schedule">
+    <view class="field-label">打卡日</view>
+    <view class="chips">
+      <view class="chip {{!customSchedule ? 'on' : ''}}" bindtap="chooseSchedule" data-mode="daily" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">每天</view>
+      <view class="chip {{customSchedule ? 'on' : ''}}" bindtap="chooseSchedule" data-mode="custom" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">自选星期</view>
+    </view>
+    <view wx:if="{{customSchedule}}" class="chips habit-weekdays">
+      <view wx:for="{{weekdayOptions}}" wx:key="bit" class="chip {{item.selected ? 'on' : ''}}" data-bit="{{item.bit}}" bindtap="toggleWeekday" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{item.label}}</view>
+    </view>
+    <view wx:if="{{form.id}}" class="sub">排班调整从今天生效</view>
   </view>
   <view class="switch-row"><view><view>置顶到今日待处理</view><view class="sub">优先出现在今日首页</view></view><switch checked="{{form.pinned}}" color="{{themeAccent}}" bindchange="onPinned" /></view>
   <button class="btn btn-primary" disabled="{{saving}}" bindtap="save" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{saving ? '保存中…' : '保存'}}</button>

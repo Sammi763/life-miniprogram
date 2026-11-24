@@ -1,6 +1,6 @@
 <view class="theme-page" style="{{themeStyle}}">
 <view wx:if="{{offline}}" class="banner">
-  <text>云端暂不可用，改动已暂存本机</text>
+  <text>网络连接异常</text>
   <view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view>
 </view>
 
@@ -11,7 +11,7 @@
 
 <view wx:if="{{billAlerts.length}}" class="card plan-bill-card">
   <view class="card-title"><text>临近还款</text><text class="sub">来自手工账本</text></view>
-  <view wx:for="{{billAlerts}}" wx:key="id" class="plan-bill-row"><view><view>{{item.name}}</view><view class="sub">{{item.dueDate}} · {{item.daysLeft === 0 ? '今天到期' : item.daysLeft + ' 天后到期'}}</view></view><view><view class="money-out">¥{{item.currentBill}}</view><view wx:if="{{item.minimumPayment}}" class="sub">最低 ¥{{item.minimumPayment}}</view></view></view>
+  <view wx:for="{{billAlerts}}" wx:key="id" class="plan-bill-row"><view><view>{{item.name}}</view><view class="sub">{{item.dueDate}} · {{item.daysLeft === 0 ? '今天到期' : item.daysLeft + ' 天后到期'}}</view></view><view><view class="money-out">¥{{item.remainingBill}}</view><view wx:if="{{item.minimumPayment}}" class="sub">最低 ¥{{item.minimumPayment}}</view></view></view>
 </view>
 
 <view class="calendar card">
@@ -36,6 +36,8 @@
   <view class="plan-content" bindtap="openEdit" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">
     <view class="plan-title {{item.done || item.skipped ? 'plan-done' : ''}}">{{item.title}}</view>
     <view class="sub">{{item.timeText}}<text wx:if="{{item.repeatText}}" class="repeat-tag">{{item.repeatText}}</text><text wx:if="{{item.reminderText}}" class="reminder-tag">{{item.reminderText}}</text><text wx:if="{{item.overdue}}" class="overdue-tag">已逾期</text><text wx:if="{{item.skipped}}" class="skip-tag">已跳过</text></view>
+    <view wx:for="{{item.subtasks}}" wx:for-item="task" wx:key="id" catchtap="toggleSubtask" data-id="{{item.id}}" data-task="{{task.id}}" class="plan-subtask" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{task.done ? '✓' : '○'}} {{task.title}}</view>
+    <view catchtap="openFocus" data-id="{{item.id}}" class="sub plan-subtask" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">开始专注</view>
   </view>
   <view class="more-action" bindtap="more" data-id="{{item.id}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">···</view>
 </view>
@@ -44,7 +46,7 @@
 
 <view wx:if="{{sheetShow}}" class="mask" bindtap="closeSheet"></view>
 <view wx:if="{{sheetShow}}" class="sheet" catchtap="noop">
-  <view class="sheet-title">{{form.id ? '编辑日程' : '新增日程'}}</view>
+  <view class="sheet-title">{{form.sourceKind === 'occurrence' ? '只编辑这一次' : (form.id ? '编辑日程' : '新增日程')}}</view>
   <view class="field">
     <view class="field-label">标题</view>
     <input value="{{form.title}}" bindinput="onTitle" maxlength="30" placeholder="如：晚上散步 20 分钟" confirm-type="next" cursor-spacing="24" />
@@ -52,13 +54,15 @@
   <view wx:if="{{form.sourceKind === 'series'}}" class="series-hint">这是重复日程：修改会应用到整个系列；只想跳过某一天，用列表里的「··· → 跳过当天」。</view>
   <view class="field">
     <view class="field-label">{{form.sourceKind === 'series' ? '开始日期' : '日期'}}</view>
-    <picker mode="date" value="{{form.date}}" bindchange="onDate"><view class="picker-value">{{form.date}}</view></picker>
+    <picker wx:if="{{form.sourceKind !== 'occurrence'}}" mode="date" value="{{form.date}}" bindchange="onDate"><view class="picker-value">{{form.date}}</view></picker>
+    <view wx:else class="picker-value">{{form.date}}</view>
   </view>
   <view class="field time-field">
     <view class="field-label">时间（可空）</view>
     <picker mode="time" value="{{form.time}}" bindchange="onTime"><view class="picker-value">{{form.time || '不设置时间'}}</view></picker>
     <view wx:if="{{form.time}}" class="clear-time" bindtap="clearTime" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">清除</view>
   </view>
+  <block wx:if="{{form.sourceKind !== 'occurrence'}}">
   <view class="field">
     <view class="field-label">重复</view>
     <view class="repeat-options">
@@ -78,8 +82,21 @@
   </view>
   <view class="switch-row"><view><view>置顶到今日待处理</view><view class="sub">优先出现在今日首页</view></view><switch checked="{{form.pinned}}" color="{{themeAccent}}" bindchange="onPinned" /></view>
   <view wx:if="{{form.sourceKind !== 'series'}}" class="switch-row"><text>已完成</text><switch checked="{{form.done}}" color="{{themeAccent}}" bindchange="onDone" /></view>
-  <view wx:if="{{form.repeat === 'none' && form.time && reminder.enabled && !form.done}}" class="switch-row reminder-switch"><view><view>到时提醒</view><view class="sub">保存后可选择是否订阅一次提醒</view></view><switch checked="{{form.remind}}" color="{{themeAccent}}" bindchange="onReminder" /></view>
+  <view wx:if="{{form.repeat === 'none' && form.time && (reminder.enabled || form.remind) && !form.done}}" class="switch-row reminder-switch"><view><view>到时提醒</view><view class="sub">{{form.remind ? '调整日期或时间后需重新订阅' : '保存后可选择是否订阅一次提醒'}}</view></view><switch checked="{{form.remind}}" color="{{themeAccent}}" bindchange="onReminder" /></view>
   <view wx:if="{{form.repeat !== 'none'}}" class="sub repeat-note">重复事项在应用内展示；微信服务通知仅用于你主动授权的单次日程。</view>
+  <view class="field">
+    <view class="field-label">子任务</view>
+    <view wx:for="{{form.subtasks}}" wx:key="id" class="row plan-subtask">
+      <text>{{item.title}}</text>
+      <button wx:if="{{index > 0}}" class="btn btn-ghost" data-id="{{item.id}}" bindtap="moveSubtask" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">上移</button>
+      <button class="btn btn-ghost" data-id="{{item.id}}" bindtap="removeSubtask" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">移除</button>
+    </view>
+    <view wx:if="{{form.subtasks.length < 12}}" class="row">
+      <input value="{{form.subtaskTitle}}" bindinput="onSubtaskTitle" maxlength="60" placeholder="写一个子任务" confirm-type="done" bindconfirm="addSubtask" />
+      <button class="btn btn-ghost" bindtap="addSubtask" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">添加</button>
+    </view>
+  </view>
+  </block>
   <button class="btn btn-primary" loading="{{saving}}" bindtap="save" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">保存</button>
 </view>
 

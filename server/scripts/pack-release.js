@@ -21,8 +21,8 @@ const version = String(process.env.RELEASE_VERSION || '').trim() || 'dev-' + new
 const outArgIndex = process.argv.indexOf('--out');
 const outDir = path.resolve(root, outArgIndex >= 0 ? process.argv[outArgIndex + 1] : 'dist');
 
-const EXCLUDED_SERVER = new Set(['node_modules', 'data', 'dist']);
-const EXCLUDED_SERVER_FILES = /^(?:\.env(\..+)?|life-sync-.*\.(?:tar\.gz|tgz))$/;
+const EXCLUDED_SERVER = new Set(['node_modules', 'data', 'dist', 'backups']);
+const EXCLUDED_SERVER_FILES = /^(?:\.env(?:\..+)?|\.DS_Store|.*\.log|life-sync-.*\.(?:tar\.gz|tgz))$/;
 
 function listFiles(dir, base, predicate) {
   const output = [];
@@ -46,6 +46,7 @@ function main() {
   const sharedFiles = listFiles(sharedDir, path.join('miniprogram', 'utils'), () => true);
   const files = serverFiles.concat(sharedFiles).sort();
 
+  fs.mkdirSync(outDir, { recursive: true });
   const staging = fs.mkdtempSync(path.join(outDir, 'pack-'));
   try {
     for (const relative of files) {

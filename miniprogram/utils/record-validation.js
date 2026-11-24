@@ -53,6 +53,22 @@ function recordId(value, required) {
   return typeof value === 'string' && ID_PATTERN.test(value);
 }
 
+function validHabitSchedule(schedule) {
+  if (schedule === undefined) return true;
+  if (!ownKeysOnly(schedule, ['startDate', 'changes']) ||
+      (schedule.startDate !== undefined && !date(schedule.startDate, true)) ||
+      !Array.isArray(schedule.changes)) return false;
+  let previous = '';
+  return schedule.changes.every((change) => {
+    if (!ownKeysOnly(change, ['date', 'days', 'updatedAt']) || !date(change.date, true) ||
+        change.date <= previous || (schedule.startDate && change.date < schedule.startDate) ||
+        !integer(change.days, 1, 127, true) ||
+        (change.updatedAt !== undefined && !integer(change.updatedAt, 1, Number.MAX_SAFE_INTEGER, true))) return false;
+    previous = change.date;
+    return true;
+  });
+}
+
 function occurredAt(value, required) {
   if (value === undefined || value === null || value === '') return !required;
   return typeof value === 'string' && OCCURRED_AT_PATTERN.test(value) && date(value.slice(0, 10), true) && time(value.slice(11));
@@ -109,35 +125,76 @@ function reminder(value) {
   );
 }
 
+function subtasks(value) {
+  if (value === undefined) return true;
+  if (!Array.isArray(value) || value.length > 12) return false;
+  const ids = new Set();
+  return value.every((item) => {
+    if (!ownKeysOnly(item, ['id', 'title', 'done']) || !recordId(item.id, true) ||
+        !text(item.title, 60, true) || !boolean(item.done, false) || ids.has(item.id)) return false;
+    ids.add(item.id);
+    return true;
+  });
+}
+
+function completedSubtasks(value) {
+  return value === undefined || (Array.isArray(value) && value.length <= 12 &&
+    new Set(value).size === value.length && value.every((id) => recordId(id, true)));
+}
+
 function validPlan(data) {
   if (data.kind === 'series') {
-    return ownKeysOnly(data, ['kind', 'title', 'startDate', 'time', 'repeat', 'repeatDay', 'endDate', 'active', 'pinned']) &&
+    return ownKeysOnly(data, ['kind', 'title', 'startDate', 'time', 'repeat', 'repeatDay', 'endDate', 'active', 'pinned', 'subtasks']) &&
       text(data.title, 30, true) && date(data.startDate, true) && time(data.time) &&
       ['daily', 'weekly', 'workdays', 'monthly'].includes(data.repeat) && date(data.endDate, false) && boolean(data.active, false) &&
       boolean(data.pinned, false) &&
       // repeatDay 仅 monthly 使用（1-31）；月份无对应日期时由客户端展开逻辑跳过该月
       integer(data.repeatDay, 1, 31, false) &&
       (data.repeat !== 'monthly' || (data.repeatDay !== undefined && Number.isInteger(data.repeatDay))) &&
-      (!data.endDate || data.endDate >= data.startDate);
+      (!data.endDate || data.endDate >= data.startDate) && subtasks(data.subtasks);
   }
   if (data.kind === 'occurrence') {
-    return ownKeysOnly(data, ['kind', 'seriesId', 'date', 'done', 'skipped', 'titleSnapshot', 'timeSnapshot']) &&
+    return ownKeysOnly(data, ['kind', 'seriesId', 'date', 'done', 'skipped', 'titleSnapshot', 'timeSnapshot', 'titleOverride', 'timeOverride', 'completedSubtasks']) &&
       typeof data.seriesId === 'string' && ID_PATTERN.test(data.seriesId) && date(data.date, true) &&
       boolean(data.done, false) && boolean(data.skipped, false) && text(data.titleSnapshot, 30, false) && time(data.timeSnapshot) &&
-      !(data.done && data.skipped);
+      text(data.titleOverride, 30, false) && time(data.timeOverride) && completedSubtasks(data.completedSubtasks) && !(data.done && data.skipped);
   }
-  return ownKeysOnly(data, ['kind', 'title', 'date', 'time', 'done', 'skipped', 'reminder', 'pinned']) &&
+  return ownKeysOnly(data, ['kind', 'title', 'date', 'time', 'done', 'skipped', 'reminder', 'pinned', 'subtasks']) &&
     (data.kind === undefined || data.kind === 'one') && text(data.title, 30, true) && date(data.date, true) &&
     time(data.time) && boolean(data.done, false) && boolean(data.skipped, false) && boolean(data.pinned, false) && reminder(data.reminder) &&
-    !(data.done && data.skipped);
+    subtasks(data.subtasks) && !(data.done && data.skipped);
 }
 
 function validateRecordData(collection, data) {
   if (!object(data) || JSON.stringify(data).length > 16384) return 'bad_data';
+  if (collection === 'focusSessions') {
+    return ownKeysOnly(data, ['date', 'startedAt', 'endedAt', 'sourceKind', 'sourceId', 'title']) &&
+      date(data.date, true) && integer(data.startedAt, 1, Number.MAX_SAFE_INTEGER, true) &&
+      integer(data.endedAt, data.startedAt + 1000, data.startedAt + 120 * 60000, true) &&
+      ['plan', 'habit', ''].includes(data.sourceKind) && recordId(data.sourceId, Boolean(data.sourceKind)) &&
+      text(data.title, 60, false) ? '' : 'bad_focus';
+  }
+  if (collection === 'weeklyReviews') {
+    return ownKeysOnly(data, ['weekStart', 'reflection', 'adjustment']) && date(data.weekStart, true) &&
+      new Date(data.weekStart + 'T00:00:00').getDay() === 1 &&
+      text(data.reflection, 500, false) && text(data.adjustment, 30, false) ? '' : 'bad_review';
+  }
+  if (collection === 'moneyRules') {
+    return ownKeysOnly(data, ['versions']) && Array.isArray(data.versions) && data.versions.length > 0 &&
+      data.versions.length <= 48 && data.versions.every((rule, index) =>
+        ownKeysOnly(rule, ['title', 'type', 'amount', 'category', 'accountId', 'startDate', 'effective', 'frequency', 'active']) &&
+        text(rule.title, 60, true) && ['income', 'expense'].includes(rule.type) &&
+        number(rule.amount, 0.01, 100000000, true) && text(rule.category, 32, true) &&
+        recordId(rule.accountId, false) && date(rule.startDate, true) && date(rule.effective, true) &&
+        (!index || data.versions[index - 1].effective < rule.effective) &&
+        boolean(rule.active, true) && ['weekly', 'monthly'].includes(rule.frequency)) ? '' : 'bad_money_rule';
+  }
   if (collection === 'money') {
-    const common = ownKeysOnly(data, ['type', 'amount', 'category', 'date', 'note', 'accountId', 'toAccountId']) &&
+    // shoppingId（v2.12 可选）：来源关联 —— 由待买「完成并记账」写入，用于防止重复记账
+    const common = ownKeysOnly(data, ['type', 'amount', 'category', 'date', 'note', 'accountId', 'toAccountId', 'shoppingId']) &&
       ['income', 'expense', 'transfer'].includes(data.type) && number(data.amount, 0.01, 100000000, true) &&
-      text(data.category, 32, true) && date(data.date, true) && text(data.note, 500, false);
+      text(data.category, 32, true) && date(data.date, true) && text(data.note, 500, false) &&
+      recordId(data.shoppingId, false);
     if (!common) return 'bad_money';
     if (data.type === 'transfer') {
       return recordId(data.accountId, true) && recordId(data.toAccountId, true) && data.accountId !== data.toAccountId && data.category === '账户转账' ? '' : 'bad_money';
@@ -155,9 +212,9 @@ function validateRecordData(collection, data) {
   }
   if (collection === 'habit') {
     if (data.kind === 'def') {
-      return ownKeysOnly(data, ['kind', 'name', 'mode', 'target', 'unit', 'color', 'pinned']) && text(data.name, 24, true) &&
+      return ownKeysOnly(data, ['kind', 'name', 'mode', 'target', 'unit', 'color', 'pinned', 'schedule']) && text(data.name, 24, true) &&
         ['check', 'count', 'value'].includes(data.mode) && number(data.target, 0, 1000000, true) && text(data.unit, 12, false) &&
-        boolean(data.pinned, false) &&
+        boolean(data.pinned, false) && validHabitSchedule(data.schedule) &&
         (data.color === undefined || (typeof data.color === 'string' && /^#[0-9A-Fa-f]{6}$/.test(data.color))) ? '' : 'bad_habit';
     }
     return ownKeysOnly(data, ['kind', 'habitId', 'date', 'value', 'mode', 'target']) && data.kind === 'entry' &&
@@ -184,9 +241,9 @@ function validateRecordData(collection, data) {
       number(data.rating, 0, 5, true) && Number.isInteger(data.rating) && text(data.comment, 500, false) && date(data.date, true) && legacyCover(data.cover, 512) ? '' : 'bad_media';
   }
   if (collection === 'settings') {
-    return ownKeysOnly(data, ['budget', 'height', 'targetWeight', 'categoryBudgets', 'aiConsent', 'theme', 'customCategories', 'favoriteCategories', 'hiddenCategories', 'habitReminderEnabled', 'billReminderEnabled', 'habitReminderTime']) &&
+    return ownKeysOnly(data, ['budget', 'height', 'targetWeight', 'categoryBudgets', 'aiConsent', 'trialAiConsent', 'theme', 'customCategories', 'favoriteCategories', 'hiddenCategories', 'habitReminderEnabled', 'billReminderEnabled', 'habitReminderTime']) &&
       number(data.budget, 0, 1000000, false) && number(data.height, 0, 250, false) && number(data.targetWeight, 0, 300, false) &&
-      categoryBudgets(data.categoryBudgets) && boolean(data.aiConsent, false) &&
+      categoryBudgets(data.categoryBudgets) && boolean(data.aiConsent, false) && boolean(data.trialAiConsent, false) &&
       customCategories(data.customCategories) &&
       (data.favoriteCategories === undefined || data.favoriteCategories === null || (Array.isArray(data.favoriteCategories) && data.favoriteCategories.length <= 12 && categoryEntries(data.favoriteCategories))) &&
       (data.hiddenCategories === undefined || data.hiddenCategories === null || (Array.isArray(data.hiddenCategories) && data.hiddenCategories.length <= 40 && categoryEntries(data.hiddenCategories))) &&
@@ -210,4 +267,14 @@ function getOneOffReminderPlan(record) {
   return { title: String(data.title), dueAt, reminder: data.reminder || null };
 }
 
-module.exports = { ID_PATTERN, MEMORY_MOODS, OCCURRED_AT_PATTERN, SETTINGS_THEMES, TIME_PATTERN, getOneOffReminderPlan, validateRecordData };
+function preservePlanDetails(previous, next) {
+  if (!previous || (previous.kind || 'one') !== (next.kind || 'one')) return next;
+  const keys = next.kind === 'occurrence' ? ['titleOverride', 'timeOverride', 'completedSubtasks'] : ['subtasks'];
+  const data = { ...next };
+  for (const key of keys) {
+    if (data[key] === undefined && previous[key] !== undefined) data[key] = previous[key];
+  }
+  return data;
+}
+
+module.exports = { preservePlanDetails, ID_PATTERN, MEMORY_MOODS, OCCURRED_AT_PATTERN, SETTINGS_THEMES, TIME_PATTERN, getOneOffReminderPlan, validateRecordData };

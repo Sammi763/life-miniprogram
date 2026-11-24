@@ -1,14 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { preserveHabitSchedule } = require('../../miniprogram/utils/habit-utils');
+const { validateRecordData, preservePlanDetails } = require('../validation');
+const { TRIAL_INSIGHT_PREFIX, aiConsentRevision } = require('../ai-consent');
 const mysql = require('mysql2/promise');
 const { hashSessionToken, isTokenHash } = require('../session-token');
 const { scanBillReminders: scanBillRemindersShared, scanHabitReminders: scanHabitRemindersShared } = require('./reminder-scan');
 
-const COLLECTIONS = ['money', 'habit', 'plan', 'fitness', 'shopping', 'media', 'accounts', 'settings', 'memories'];
+const COLLECTIONS = ['money', 'habit', 'plan', 'fitness', 'shopping', 'media', 'accounts', 'settings', 'memories', 'focusSessions', 'weeklyReviews', 'moneyRules'];
 const IDENTIFIER_PATTERN = /^[A-Za-z0-9_]+$/;
 const REMINDER_CREDIT_KINDS = ['habit', 'bill'];
-const REQUIRED_TABLES = ['records', 'sessions', 'users', 'scheduled_reminders', 'app_secrets', 'ai_insights', 'reminder_credits'];
+const REQUIRED_TABLES = ['records', 'sessions', 'users', 'scheduled_reminders', 'app_secrets', 'ai_insights', 'reminder_credits', 'owner_seq'];
 
 function assertDatabaseName(name) {
   if (!IDENTIFIER_PATTERN.test(name)) throw new Error('Invalid DB_NAME');
@@ -33,6 +36,56 @@ function normalizeProfile(row, ownerId) {
     phone: String((row && row.phone) || ''),
     updatedAt: Number((row && row.updatedAt) || 0)
   };
+}
+
+// MySQL 将 JSON 转为规范文本，使旧服务端变更可被识别，即便 updated_at 相同。
+function recordFingerprint(data, updatedAt, deletedAt) {
+  return `UNHEX(SHA2(CONCAT(CAST(${data} AS CHAR CHARACTER SET utf8mb4), ':', CAST(${updatedAt} AS UNSIGNED), ':', CAST(${deletedAt} AS UNSIGNED)), 256))`;
+}
+
+const STORED_FINGERPRINT = recordFingerprint('data', 'updated_at', 'deleted_at');
+const UNPUBLISHED_RECORD = `seq = 0 OR NOT (seq_fingerprint <=> ${STORED_FINGERPRINT})`;
+const WRITE_FINGERPRINT = recordFingerprint('CAST(? AS JSON)', '?', '?');
+const WRITE_RECORD_SQL = `INSERT INTO records (owner_id, collection, record_id, data, updated_at, deleted_at, seq, seq_fingerprint)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ${WRITE_FINGERPRINT})
+  ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = VALUES(updated_at), deleted_at = VALUES(deleted_at),
+    seq = VALUES(seq), seq_fingerprint = VALUES(seq_fingerprint)`;
+
+function insertRecord(connection, ownerId, collection, id, data, updatedAt, deletedAt, seq) {
+  const json = JSON.stringify(data);
+  return connection.execute(WRITE_RECORD_SQL, [ownerId, collection, id, json, updatedAt, deletedAt, seq, json, updatedAt, deletedAt]);
+}
+
+async function readAiConsentRevision(db, ownerId, isTrial, lock = false) {
+  const [rows] = await db.execute(
+    `SELECT data, deleted_at AS deletedAt, seq FROM records
+     WHERE owner_id = ? AND collection = 'settings' AND record_id = 'app'${lock ? ' FOR UPDATE' : ''}`,
+    [ownerId]
+  );
+  const row = rows[0];
+  return row ? aiConsentRevision({ ...normalizeRecord(row), seq: Number(row.seq) }, isTrial) : 0;
+}
+
+async function writeAiInsight(db, ownerId, insightKey, contextHash, content) {
+  const now = Date.now();
+  await db.execute(
+    `INSERT INTO ai_insights (owner_id, insight_key, context_hash, content, generated_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE context_hash = VALUES(context_hash), content = VALUES(content), generated_at = VALUES(generated_at), updated_at = VALUES(updated_at)`,
+    [ownerId, String(insightKey || ''), String(contextHash || ''), String(content || '').slice(0, 500), now, now]
+  );
+}
+
+async function clearDisabledAiInsights(db, ownerId, settings) {
+  const keepRegular = settings.aiConsent === true;
+  const keepTrial = settings.trialAiConsent === true;
+  if (keepRegular && keepTrial) return;
+  if (!keepRegular && !keepTrial) {
+    await db.execute('DELETE FROM ai_insights WHERE owner_id = ?', [ownerId]);
+    return;
+  }
+  const comparison = keepTrial ? 'NOT LIKE' : 'LIKE';
+  await db.execute(`DELETE FROM ai_insights WHERE owner_id = ? AND insight_key ${comparison} ?`, [ownerId, TRIAL_INSIGHT_PREFIX + '%']);
 }
 
 class MySqlStore {
@@ -91,19 +144,65 @@ class MySqlStore {
     await this.pool.query('UPDATE sessions SET token = SHA2(token, 256) WHERE CHAR_LENGTH(token) = 48');
     // 历史版本曾保存完整手机号；新版本仅保留可展示的掩码。
     await this.pool.query("UPDATE users SET phone = CONCAT(LEFT(phone, 3), '****', RIGHT(phone, 4)) WHERE phone REGEXP '^[0-9]{11}$'");
+    await this.migrateChangeSeq();
     const [legacyTables] = await this.pool.execute(
       "SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'uploads' LIMIT 1"
     );
     this.legacyUploadsAvailable = legacyTables.length > 0;
   }
 
+  /* 迁移在切换服务版本时执行。补发旧写入时从已发布序号头之后分配。 */
+  async migrateChangeSeq() {
+    const [columns] = await this.pool.execute(
+      "SELECT column_name AS name FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'records' AND column_name IN ('seq', 'seq_fingerprint')"
+    );
+    const names = new Set(columns.map((column) => column.name));
+    if (!names.has('seq')) await this.pool.query('ALTER TABLE records ADD COLUMN seq BIGINT UNSIGNED NOT NULL DEFAULT 0');
+    if (!names.has('seq_fingerprint')) await this.pool.query('ALTER TABLE records ADD COLUMN seq_fingerprint BINARY(32) NULL');
+
+    const [seqIndexes] = await this.pool.execute(
+      "SELECT 1 FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'records' AND index_name = 'idx_records_owner_seq' LIMIT 1"
+    );
+    if (!seqIndexes.length) await this.pool.query('CREATE INDEX idx_records_owner_seq ON records (owner_id, seq)');
+
+    const refreshHeads = `INSERT INTO owner_seq (owner_id, seq)
+      SELECT owner_id, MAX(seq) FROM records WHERE seq > 0 GROUP BY owner_id
+      ON DUPLICATE KEY UPDATE seq = GREATEST(seq, VALUES(seq))`;
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query(refreshHeads);
+      await connection.query(`UPDATE records r JOIN (
+        SELECT owner_id, collection, record_id,
+          ROW_NUMBER() OVER (PARTITION BY owner_id ORDER BY updated_at, collection, record_id) AS rn
+        FROM records WHERE ${UNPUBLISHED_RECORD}
+      ) pending ON r.owner_id = pending.owner_id AND r.collection = pending.collection AND r.record_id = pending.record_id
+      LEFT JOIN owner_seq head ON r.owner_id = head.owner_id
+      SET r.seq = COALESCE(head.seq, 0) + pending.rn,
+        r.seq_fingerprint = ${recordFingerprint('r.data', 'r.updated_at', 'r.deleted_at')}`);
+      await connection.query(refreshHeads);
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async verifySchema() {
     const [rows] = await this.pool.execute(
-      "SELECT table_name AS tableName FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('records', 'sessions', 'users', 'scheduled_reminders', 'app_secrets', 'ai_insights', 'reminder_credits')"
+      "SELECT table_name AS tableName FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name IN ('records', 'sessions', 'users', 'scheduled_reminders', 'app_secrets', 'ai_insights', 'reminder_credits', 'owner_seq')"
     );
     const names = new Set(rows.map((row) => row.tableName));
     const missing = REQUIRED_TABLES.filter((name) => !names.has(name));
     if (missing.length) throw new Error('Database schema missing: ' + missing.join(', ') + '（先执行 db:migrate 再启动）');
+    const [seqColumns] = await this.pool.execute(
+      "SELECT 1 FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'records' AND column_name IN ('seq', 'seq_fingerprint')"
+    );
+    if (seqColumns.length !== 2) throw new Error('Database schema is outdated: records.seq or records.seq_fingerprint missing（先执行 db:migrate 再启动）');
+    const [unpublished] = await this.pool.query(`SELECT 1 FROM records WHERE ${UNPUBLISHED_RECORD} LIMIT 1`);
+    if (unpublished.length) throw new Error('Database has unpublished record changes（先执行 db:migrate 再启动）');
     const [tokenColumns] = await this.pool.execute(
       "SELECT character_maximum_length AS length FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sessions' AND column_name = 'token' LIMIT 1"
     );
@@ -207,6 +306,14 @@ class MySqlStore {
     return changes;
   }
 
+  async getRecord(ownerId, collection, id) {
+    const [rows] = await this.pool.execute(
+      'SELECT record_id AS id, data, updated_at AS updatedAt, deleted_at AS deletedAt FROM records WHERE owner_id = ? AND collection = ? AND record_id = ?',
+      [ownerId, collection, id]
+    );
+    return rows[0] ? normalizeRecord(rows[0]) : null;
+  }
+
   async getCollection(ownerId, collection) {
     const [rows] = await this.pool.execute(
       `SELECT record_id AS id, data, updated_at AS updatedAt, deleted_at AS deletedAt
@@ -219,10 +326,41 @@ class MySqlStore {
     }));
   }
 
+  /*
+   * owner 内单调变更序号（v2.12）：事务内原子自增并回读真实值。
+   * INSERT...ON DUPLICATE KEY UPDATE 的 LAST_INSERT_ID(seq+1) 保证并发自增不重号；
+   * 同事务 SELECT FOR UPDATE 回读，避免新建 owner 时 LAST_INSERT_ID 未定义的歧义。
+   */
+  async nextChangeSeq(connection, ownerId) {
+    await connection.execute(
+      'INSERT INTO owner_seq (owner_id, seq) VALUES (?, 1) ON DUPLICATE KEY UPDATE seq = LAST_INSERT_ID(seq + 1)',
+      [ownerId]
+    );
+    const [rows] = await connection.execute(
+      'SELECT seq FROM owner_seq WHERE owner_id = ? FOR UPDATE',
+      [ownerId]
+    );
+    const seq = Number(rows[0] && rows[0].seq) || 1;
+    return seq > 0 ? seq : 1;
+  }
+
   async upsert(ownerId, collection, id, data, updatedAt, options) {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.writeRecord(ownerId, collection, id, data, updatedAt, options);
+      } catch (error) {
+        if (attempt >= 2 || error.code !== 'ER_LOCK_DEADLOCK') throw error;
+      }
+    }
+  }
+
+  async writeRecord(ownerId, collection, id, data, updatedAt, options) {
     // createOnly（导入恢复语义）：只要记录已存在（存活或墓碑）就拒绝写入并回传服务端现状。
     // 检查在 FOR UPDATE 事务内、且先于 LWW —— 并发导入/多设备写入由行锁串行化，没有竞态窗口。
     const createOnly = Boolean(options && options.createOnly);
+    const restore = options && options.restore;
+    const replacesDeletedAt = options && options.replacesDeletedAt;
+    const deletedAt = options && options.tombstone ? updatedAt : 0;
     const connection = await this.pool.getConnection();
     try {
       await connection.beginTransaction();
@@ -231,7 +369,17 @@ class MySqlStore {
          FROM records WHERE owner_id = ? AND collection = ? AND record_id = ? FOR UPDATE`,
         [ownerId, collection, id]
       );
-      if (createOnly && rows.length) {
+      if (restore) {
+        const old = rows.length && normalizeRecord(rows[0]);
+        if (!old || old.deletedAt !== restore.deletedAt || old.deletedAt < restore.cutoff ||
+            validateRecordData('memories', old.data)) {
+          await connection.rollback();
+          return { applied: false };
+        }
+        data = old.data;
+        updatedAt = Math.max(updatedAt, old.updatedAt + 1);
+      }
+      if (createOnly && rows.length && !(replacesDeletedAt > 0 && Number(rows[0].deletedAt) === replacesDeletedAt)) {
         await connection.rollback();
         return { applied: false, reason: 'exists', record: normalizeRecord(rows[0]) };
       }
@@ -239,14 +387,16 @@ class MySqlStore {
         await connection.rollback();
         return { applied: false, reason: 'older', record: normalizeRecord(rows[0]) };
       }
-      await connection.execute(
-        `INSERT INTO records (owner_id, collection, record_id, data, updated_at, deleted_at)
-         VALUES (?, ?, ?, ?, ?, 0)
-         ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = VALUES(updated_at), deleted_at = 0`,
-        [ownerId, collection, id, JSON.stringify(data), updatedAt]
-      );
+      if (rows.length && !Number(rows[0].deletedAt)) {
+        if (collection === 'plan') data = preservePlanDetails(normalizeRecord(rows[0]).data, data);
+        if (collection === 'habit') data = preserveHabitSchedule(normalizeRecord(rows[0]).data, data);
+      }
+      // 只有真实应用的写入消耗序号：LWW 拒绝不推进游标，其他设备不会白拉一次
+      const seq = await this.nextChangeSeq(connection, ownerId);
+      await insertRecord(connection, ownerId, collection, id, data, updatedAt, deletedAt, seq);
+      if (collection === 'settings' && id === 'app') await clearDisabledAiInsights(connection, ownerId, deletedAt ? {} : data);
       await connection.commit();
-      return { applied: true, record: { id, data, updatedAt, deletedAt: 0 } };
+      return { applied: true, record: { id, data, updatedAt, deletedAt } };
     } catch (error) {
       await connection.rollback();
       throw error;
@@ -269,12 +419,9 @@ class MySqlStore {
         return { applied: false, reason: 'older', record: normalizeRecord(rows[0]) };
       }
       const oldData = rows.length ? normalizeRecord(rows[0]).data : (fallbackData || {});
-      await connection.execute(
-        `INSERT INTO records (owner_id, collection, record_id, data, updated_at, deleted_at)
-         VALUES (?, ?, ?, ?, ?, ?)
-         ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = VALUES(updated_at), deleted_at = VALUES(deleted_at)`,
-        [ownerId, collection, id, JSON.stringify(oldData), updatedAt, updatedAt]
-      );
+      const seq = await this.nextChangeSeq(connection, ownerId);
+      await insertRecord(connection, ownerId, collection, id, oldData, updatedAt, updatedAt, seq);
+      if (collection === 'settings' && id === 'app') await clearDisabledAiInsights(connection, ownerId, {});
       await connection.commit();
       return { applied: true };
     } catch (error) {
@@ -283,6 +430,36 @@ class MySqlStore {
     } finally {
       connection.release();
     }
+  }
+
+  /*
+   * 按变更序号拉取（v2.12 下载游标）：seq > sinceSeq 升序全量返回，cursor 取 owner 序号头。
+   * 本机写入不推进该游标 —— 晚到上传的旧时间戳记录（seq 已分配）不会被 since 一刀切掉。
+   */
+  async getChangesBySeq(ownerId, sinceSeq) {
+    const requested = Math.max(0, Number(sinceSeq) || 0);
+    // Read the head and matching rows from the same statement snapshot.
+    const [rows] = await this.pool.execute(
+      `SELECT head.seq AS head, r.collection, r.record_id AS id, r.data,
+              r.updated_at AS updatedAt, r.deleted_at AS deletedAt, r.seq
+       FROM (SELECT COALESCE((SELECT seq FROM owner_seq WHERE owner_id = ?), 0) AS seq) head
+       LEFT JOIN records r ON r.owner_id = ? AND r.seq > IF(head.seq < ?, 0, ?)
+       ORDER BY r.seq ASC`,
+      [ownerId, ownerId, requested, requested]
+    );
+    const reset = requested > Number(rows[0].head);
+    const changes = {};
+    // 游标取"本批实际返回的最大 seq"（水位线）：协议承诺 changes 对 cursor 完备。
+    // 单条查询内完成，不存在"cursor 越过未下发记录"的竞态；并发新写入留给下一次拉取。
+    let cursor = reset ? 0 : requested;
+    for (const row of rows) {
+      if (!row.id) continue;
+      cursor = Math.max(cursor, Number(row.seq) || 0);
+      const record = normalizeRecord(row);
+      if (record.deletedAt) record.data = null;
+      (changes[row.collection] || (changes[row.collection] = [])).push(record);
+    }
+    return { cursor, changes, reset };
   }
 
   async exportRecords(ownerId) {
@@ -317,22 +494,43 @@ class MySqlStore {
     return rows[0] || null;
   }
 
-  async saveAiInsight(ownerId, insightKey, contextHash, content) {
-    const now = Date.now();
-    await this.pool.execute(
-      `INSERT INTO ai_insights (owner_id, insight_key, context_hash, content, generated_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?)
-       ON DUPLICATE KEY UPDATE context_hash = VALUES(context_hash), content = VALUES(content), generated_at = VALUES(generated_at), updated_at = VALUES(updated_at)`,
-      [ownerId, String(insightKey || ''), String(contextHash || ''), String(content || '').slice(0, 500), now, now]
-    );
+  async getAiConsentRevision(ownerId, isTrial) {
+    return readAiConsentRevision(this.pool, ownerId, isTrial);
   }
 
-  async deleteAiInsights(ownerId) {
-    const [result] = await this.pool.execute('DELETE FROM ai_insights WHERE owner_id = ?', [ownerId]);
-    return result.affectedRows;
+  async saveAiInsight(ownerId, insightKey, contextHash, content, consentRevision) {
+    if (!consentRevision) return false;
+    const connection = await this.pool.getConnection();
+    try {
+      await connection.beginTransaction();
+      const currentRevision = await readAiConsentRevision(connection, ownerId, insightKey.startsWith(TRIAL_INSIGHT_PREFIX), true);
+      if (currentRevision !== consentRevision) {
+        await connection.rollback();
+        return false;
+      }
+      await writeAiInsight(connection, ownerId, insightKey, contextHash, content);
+      await connection.commit();
+      return true;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 
   async createReminder(ownerId, planId, payload) {
+    if (payload.onceId) {
+      const now = Date.now();
+      // The primary key makes concurrent scans for the same owner and day idempotent.
+      const [result] = await this.pool.execute(
+        `INSERT IGNORE INTO scheduled_reminders
+         (id, owner_id, plan_id, title, due_at, status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`,
+        [payload.onceId, ownerId, planId, payload.title, payload.dueAt, now, now]
+      );
+      return result.affectedRows ? { id: payload.onceId } : null;
+    }
     const connection = await this.pool.getConnection();
     const now = Date.now();
     const id = crypto.randomBytes(20).toString('hex');
@@ -374,6 +572,25 @@ class MySqlStore {
     return rows[0] || null;
   }
 
+  async listDeletedMemories(owner, cutoff, offset) {
+    const [rows] = await this.pool.execute(
+      `SELECT record_id AS id, data, updated_at AS updatedAt, deleted_at AS deletedAt
+       FROM records WHERE owner_id = ? AND collection = 'memories' AND deleted_at >= ?
+       AND JSON_TYPE(JSON_EXTRACT(data, '$.content')) = 'STRING'
+       ORDER BY deleted_at DESC, record_id LIMIT 21 OFFSET ?`, [owner, cutoff, offset]
+    );
+    return rows.map(normalizeRecord);
+  }
+
+  async listReminders(owner, pending, offset) {
+    const [rows] = await this.pool.execute(
+      `SELECT id, plan_id AS planId, title, due_at AS dueAt, status, updated_at AS updatedAt
+       FROM scheduled_reminders WHERE owner_id = ? AND ${pending ? "status = 'pending'" : "status <> 'pending'"}
+       ORDER BY ${pending ? 'due_at ASC' : 'updated_at DESC'}, id LIMIT 21 OFFSET ?`, [owner, offset]
+    );
+    return rows;
+  }
+
   async getLatestReminderForPlan(ownerId, planId) {
     const [rows] = await this.pool.execute(
       `SELECT id, owner_id AS ownerId, plan_id AS planId, title, due_at AS dueAt, status,
@@ -385,15 +602,26 @@ class MySqlStore {
     return rows[0] || null;
   }
 
-  async cancelRemindersByPlan(ownerId, planId) {
+  async cancelRemindersByPlan(ownerId, planId, reason = '') {
     const now = Date.now();
     const [result] = await this.pool.execute(
       `UPDATE scheduled_reminders
-       SET status = 'cancelled', cancelled_at = ?, updated_at = ?, lock_token = NULL, locked_at = 0
-       WHERE owner_id = ? AND plan_id = ? AND status = 'pending'`,
-      [now, now, ownerId, planId]
+       SET status = 'cancelled', cancelled_at = ?, updated_at = ?, last_error = ?, lock_token = NULL, locked_at = 0
+       WHERE owner_id = ? AND plan_id = ?
+         AND (status = 'pending' OR (? = '' AND status = 'cancelled' AND last_error = 'plan_completed'))`,
+      [now, now, reason, ownerId, planId, reason]
     );
     return result.affectedRows;
+  }
+
+  async resumeCancelledReminder(ownerId, id, reason, title, dueAt) {
+    const [result] = await this.pool.execute(
+      `UPDATE scheduled_reminders
+       SET status = 'pending', title = ?, last_error = '', cancelled_at = 0, updated_at = ?
+       WHERE owner_id = ? AND id = ? AND status = 'cancelled' AND last_error = ? AND due_at = ?`,
+      [title, Date.now(), ownerId, id, reason, dueAt]
+    );
+    return result.affectedRows > 0;
   }
 
   async claimDueReminders(now, limit, lockToken) {
@@ -431,13 +659,13 @@ class MySqlStore {
   }
 
   async finishReminder(id, lockToken, status, lastError) {
-    if (!['sent', 'failed'].includes(status)) throw new Error('bad_reminder_status');
+    if (!['sent', 'failed', 'cancelled'].includes(status)) throw new Error('bad_reminder_status');
     const now = Date.now();
     const [result] = await this.pool.execute(
       `UPDATE scheduled_reminders
-       SET status = ?, sent_at = ?, failed_at = ?, last_error = ?, updated_at = ?, lock_token = NULL, locked_at = 0
+       SET status = ?, sent_at = ?, failed_at = ?, cancelled_at = ?, last_error = ?, updated_at = ?, lock_token = NULL, locked_at = 0
        WHERE id = ? AND status = 'pending' AND lock_token = ?`,
-      [status, status === 'sent' ? now : 0, status === 'failed' ? now : 0, String(lastError || '').slice(0, 255), now, id, lockToken]
+      [status, status === 'sent' ? now : 0, status === 'failed' ? now : 0, status === 'cancelled' ? now : 0, String(lastError || '').slice(0, 255), now, id, lockToken]
     );
     return result.affectedRows > 0;
   }
@@ -484,15 +712,24 @@ class MySqlStore {
     return rows.map((row) => ({ ownerId: row.ownerId, data: this.parseRecordData(row.data) }));
   }
 
-  async listHabitEntryOwners(today) {
+  async listHabitReminderRecords(today) {
     const [rows] = await this.pool.execute(
-      `SELECT DISTINCT owner_id AS ownerId FROM records
+      `SELECT owner_id AS ownerId, record_id AS id, data, updated_at AS updatedAt FROM records
        WHERE collection = 'habit' AND deleted_at = 0
-         AND JSON_UNQUOTE(JSON_EXTRACT(data, '$.kind')) = 'entry'
-         AND JSON_UNQUOTE(JSON_EXTRACT(data, '$.date')) = ?`,
+         AND (JSON_UNQUOTE(JSON_EXTRACT(data, '$.kind')) = 'def'
+              OR JSON_UNQUOTE(JSON_EXTRACT(data, '$.date')) = ?)`,
       [String(today)]
     );
-    return new Set(rows.map((row) => row.ownerId));
+    return rows.map((row) => ({ ...row, data: this.parseRecordData(row.data) }));
+  }
+
+  async listBillRepayments(ownerId) {
+    const [rows] = await this.pool.execute(
+      `SELECT record_id AS id, data, updated_at AS updatedAt
+       FROM records WHERE owner_id = ? AND collection = 'money' AND record_id LIKE 'repay-%' AND deleted_at = 0`,
+      [ownerId]
+    );
+    return rows.map(normalizeRecord);
   }
 
   async listLiabilityAccounts() {
@@ -523,6 +760,8 @@ class MySqlStore {
       await connection.execute('DELETE FROM scheduled_reminders WHERE owner_id = ?', [ownerId]);
       await connection.execute('DELETE FROM ai_insights WHERE owner_id = ?', [ownerId]);
       await connection.execute('DELETE FROM reminder_credits WHERE owner_id = ?', [ownerId]);
+      // v2.12：变更序号头一并清除（复核修复：否则已注销身份仍残留 owner_id 与递增序号）
+      await connection.execute('DELETE FROM owner_seq WHERE owner_id = ?', [ownerId]);
       await connection.execute('DELETE FROM users WHERE owner_id = ?', [ownerId]);
       if (this.legacyUploadsAvailable) await connection.execute('DELETE FROM uploads WHERE owner_id = ?', [ownerId]);
       await connection.commit();

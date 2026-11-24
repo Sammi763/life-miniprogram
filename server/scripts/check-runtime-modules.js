@@ -20,7 +20,10 @@ const REQUIRED_SHARED = [
   'miniprogram/utils/report-utils.js',
   'miniprogram/utils/daily-utils.js',
   'miniprogram/utils/memory-utils.js',
-  'miniprogram/utils/plan-utils.js'
+  'miniprogram/utils/plan-utils.js',
+  'miniprogram/utils/money-rules.js',
+  'miniprogram/utils/amount.js',
+  'miniprogram/utils/money-audit.js'
 ];
 const MODULES = [
   './validation',
@@ -28,6 +31,7 @@ const MODULES = [
   './session-token',
   './secret-store',
   './config',
+  './avatar-store',
   './reminders',
   './ai-insights',
   './db/store',
@@ -57,6 +61,13 @@ function main() {
       console.error('CHECK_FAIL ' + name + ': ' + (error && error.message));
       process.exit(1);
     }
+  }
+  try {
+    require(require.resolve('sharp', { paths: [target] }));
+    console.log('CHECK_OK sharp');
+  } catch (error) {
+    console.error('CHECK_FAIL sharp: ' + error.message);
+    process.exit(1);
   }
   console.log('RUNTIME_MODULES_OK');
 }

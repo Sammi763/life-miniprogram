@@ -85,6 +85,6 @@ WIRED_PAGES.forEach((page) => {
 const mineWxml = read('miniprogram/pages/mine/mine.wxml');
 assert.match(mineWxml, /open-type="share"/, '「我的」页需要可见的转发入口，否则功能不可发现');
 /* 纯文字约束（text-only-mode）不可被此次改动破坏 */
-assert.doesNotMatch(mineWxml, /<image/, '「我的」页必须保持纯文字，不引入图片');
+assert.match(mineWxml, /<image wx:if="{{avatarPath}}"/, '「我的」在有头像时展示账号图片，分享图仍使用 logo');
 
 console.log('SHARE_TEST_PASSED');

@@ -76,27 +76,32 @@ function makePage(definition) {
 
     const today = makePage(loadPage('miniprogram/pages/today/today.js'));
     today.render.call(today);
-    assert.strictEqual(today.data.firstRun, true, '四个核心集合全空时应判定为首次使用');
+    assert.strictEqual(today.data.firstRun, true, '没有生活记录时应判定为首次使用');
 
     const wxml = fs.readFileSync(path.join(root, 'miniprogram/pages/today/today.wxml'), 'utf8');
-    assert.match(wxml, /wx:if="\{\{firstRun\}\}"/, '首次使用必须渲染三步开始卡');
-    assert.match(wxml, /记一笔/, '三步开始必须包含记一笔');
-    assert.match(wxml, /建习惯/, '三步开始必须包含建习惯');
-    assert.match(wxml, /排日程/, '三步开始必须包含排日程');
+    assert.match(wxml, /wx:if="\{\{firstRun\}\}"/, '首次使用必须突出随记入口');
+    assert.match(wxml, /写下第一条随记/);
+    assert.doesNotMatch(wxml, /今日生活指数/);
+    assert.match(wxml, /记一笔/, '首页必须包含记一笔');
+    assert.match(wxml, /建习惯/, '首页必须包含建习惯');
+    assert.match(wxml, /排日程/, '首页必须包含排日程');
     assert.match(wxml, /bindtap="goHabit"/, '建习惯入口必须可达');
     assert.match(wxml, /overdue-badge/, '必须渲染逾期徽标');
-    assert.match(wxml, /bindtap="goMine"/, '预算行必须可直达「我的」');
+    assert.match(wxml, /bindtap="goBudget"/, '预算行必须直达记账页预算编辑器（U05）');
     assert.match(wxml, /bindtap="goMoney" data/ === null ? /x/ : /class="today-bill-row tap-row"/, '还款行必须可点击直达账本');
 
     today.goHabit.call(today);
-    today.goMine.call(today);
     assert.ok(events.includes('tab:/pages/habit/habit'), '建习惯必须切到习惯 tab');
-    assert.ok(events.includes('tab:/pages/mine/mine'), '预算设置必须切到我的 tab');
+
+    store.applyLocalUpsert('memories', { id: 'first-memory', data: { content: '第一条随记' }, updatedAt: 1 });
+    today.render();
+    assert.strictEqual(today.data.firstRun, false, '只写过随记也应结束首次使用引导');
+    store.applyLocalDelete('memories', 'first-memory', 2);
 
     // 写入任一核心记录后三步开始必须消失
     store.applyLocalUpsert('money', { id: 'm1', data: { type: 'expense', amount: 12, category: '餐饮', date: sync.fmtDate(new Date()) }, updatedAt: 1, deletedAt: 0 });
     today.render.call(today);
-    assert.strictEqual(today.data.firstRun, false, '有任意核心记录后三步开始必须消失');
+    assert.strictEqual(today.data.firstRun, false, '记账后首次使用引导消失');
 
     // 逾期徽标：昨日未完成日程计入，已完成/今日不计
     const t = sync.fmtDate(new Date());
@@ -106,7 +111,7 @@ function makePage(definition) {
     store.applyLocalUpsert('plan', { id: 'p2', data: { title: '昨日已完成', date: sync.fmtDate(yesterday), time: '', done: true }, updatedAt: 3, deletedAt: 0 });
     today.render.call(today);
     assert.strictEqual(today.data.overdueCount, 1, '只有未完成的逾期日程计入徽标');
-    assert.ok(today.data.plans.some((plan) => plan.overdue), '逾期项必须带 overdue 标记');
+    assert.ok(today.data.todayQueue.some((plan) => plan.overdue), '逾期项必须带 overdue 标记');
     assert.ok(String(t).length === 10);
   } finally {
     // 防抖 persist 定时器可能在测试结束后才触发，恢复一个带 storage 的兜底避免噪音报错

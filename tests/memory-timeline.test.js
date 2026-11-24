@@ -120,7 +120,9 @@ assert.match(read('miniprogram/pages/memory/memory.wxss'), /\.memory-more\b/, '�
 const memJs = read('miniprogram/pages/memory/memory.js');
 assert.match(memJs, /loadMore\(\)/, '需要提供 loadMore 方法');
 assert.match(memJs, /resetTimeline\(\)/, '需要提供回到第一批的方法');
-assert.match(memJs, /onKeyword\(event\)[^\n]*resetTimeline\(\)/, '关键词变化后必须回到第一批');
+/* v2.12 性能方案 §5：关键词输入 300ms 防抖后仍必须回到第一批（防抖不改变语义） */
+assert.match(memJs, /onKeyword\(event\)[\s\S]{0,220}?resetTimeline\(\)/, '关键词变化后（防抖 300ms）必须回到第一批');
+assert.match(memJs, /setTimeout\(\(\) => this\.resetTimeline\(\), 300\)/, '随记搜索输入必须 300ms 防抖（与统一搜索同一策略）');
 assert.match(memJs, /setFilterMood\(event\)[\s\S]{0,200}?resetTimeline\(\)/, '心情筛选变化后必须回到第一批');
 assert.match(memJs, /setFilterTag\(event\)[\s\S]{0,200}?resetTimeline\(\)/, '标签筛选变化后必须回到第一批');
 assert.match(memJs, /clearFilters\(\)[^\n]*resetTimeline\(\)/, '清除筛选后必须回到第一批');

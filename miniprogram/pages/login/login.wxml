@@ -11,7 +11,6 @@
   <view class="card login-card" wx:if="{{!loggedIn && !entering}}">
     <view class="login-kicker">YOUR PRIVATE SPACE</view>
     <view class="login-title">把生活留给自己</view>
-    <view class="login-copy">登录后，账本、习惯、日程与每一条随记都会安静地同步到你的专属空间。</view>
     <view wx:if="{{loginStatus}}" class="login-status">{{loginStatus}}</view>
     <view wx:if="{{serverError}}" class="server-error">{{serverError}}</view>
     <checkbox-group class="terms-group" bindchange="onTermsChange">
@@ -28,20 +27,23 @@
       <view class="diagnose-version">当前版本 {{buildVersion}}</view>
     </view>
     <view class="login-trust"><text class="trust-dot"></text><text>你的记录仅用于你的生活空间</text></view>
-    <view class="sub privacy-copy">使用微信账号创建专属数据空间；昵称可选。个性化 AI 默认关闭。</view>
+    <view class="sub privacy-copy">昵称可选。</view>
   </view>
 
   <view class="card profile-card" wx:elif="{{loggedIn}}">
-    <view class="profile-card-head"><view><view class="login-kicker">PROFILE</view><view class="profile-title">{{editingProfile ? '编辑资料' : '完善资料'}}</view></view><text class="sub">可选</text></view>
+    <view class="profile-card-head"><view><view class="login-kicker">PROFILE</view><view class="profile-title">编辑资料</view></view><text class="sub">可选</text></view>
     <view class="avatar-area">
-      <view class="avatar text-avatar {{avatarTone}}">{{avatarText}}</view>
-      <view class="sub">文字头像会随昵称自动生成；昵称可留空跳过</view>
+      <image wx:if="{{avatarPath}}" class="avatar" src="{{avatarPath}}" mode="aspectFill" binderror="avatarError" />
+      <view wx:else class="avatar text-avatar {{avatarTone}}">{{avatarText}}</view>
+      <button wx:if="{{avatarEnabled}}" class="btn btn-ghost" open-type="chooseAvatar" bindchooseavatar="chooseAvatar" disabled="{{saving}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">选择头像</button>
+      <button wx:if="{{avatarEnabled && hasAvatar}}" class="btn btn-ghost" bindtap="resetAvatar" disabled="{{saving}}" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">恢复文字头像</button>
+      <view class="sub">文字头像会随昵称自动生成，昵称可以留空</view>
     </view>
     <view class="field">
       <view class="field-label">昵称</view>
-      <input type="nickname" maxlength="32" value="{{nickname}}" bindinput="onNickname" placeholder="请输入昵称" />
+      <input type="text" maxlength="32" value="{{nickname}}" bindinput="onNickname" placeholder="请输入昵称" />
     </view>
-    <button class="btn btn-primary complete-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="completeProfile" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">{{editingProfile ? '保存资料' : '完成，进入生活记忆'}}</button>
+    <button class="btn btn-primary complete-btn" loading="{{saving}}" disabled="{{saving}}" bindtap="completeProfile" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">保存资料</button>
   </view>
 
   <view class="entering" wx:else>

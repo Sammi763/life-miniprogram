@@ -9,6 +9,7 @@ Type=oneshot
 WorkingDirectory=/opt/life-sync-server
 EnvironmentFile=/opt/life-sync-server/.env
 ExecStart=/opt/life-sync-server/scripts/backup-mysql.sh
+ExecStart=/bin/bash /opt/life-sync-server/scripts/backup-avatars.sh
 User=www-data
 UMask=0077
 NoNewPrivileges=true

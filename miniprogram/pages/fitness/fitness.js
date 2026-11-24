@@ -51,18 +51,29 @@ Page({
   chartRecords: [],
   canvasNode: null,
 
-  onLoad() {
+  onLoad(options) {
     theme.applyToPage(this);
-    this.unsub = store.subscribe(() => this.render());
+    this.unsub = ui.bindStore(this, ['fitness', 'settings', '__sync__'],
+      () => this.render(),
+      () => this.renderSyncState());
     this.render();
+    /* U01 一次性新增意图：今日页「记体重」直达体重表单 */
+    if (options && options.create === 'weight') this.openWeight();
+    /* 搜索深链（U07）：直接打开对应体重记录编辑 */
+    if (options && options.id) this.openWeightById(options.id);
   },
-  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); },
+  onShow() { this.__pageHidden = false; theme.applyToPage(this); share.enableShareMenu(); this.render(); },
   onShareAppMessage: share.onShareAppMessage('fitness'),
   onShareTimeline: share.onShareTimeline('fitness'),
+  onHide() { this.__pageHidden = true; },
   onUnload() {
     this.unsub && this.unsub();
     clearTimeout(this.__undoTimer);
     this.canvasNode = null;
+  },
+  /* 同步状态变化只更新状态横幅，不做整页重算（性能方案 §5） */
+  renderSyncState() {
+    ui.diffSetData(this, { offline: store.state.syncState === 'offline' });
   },
   retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() {
@@ -122,8 +133,10 @@ Page({
       bmi: bmiValue ? bmiValue.toFixed(1) : '—',
       bmiLabel: bmiInfo.label,
       bmiClass: bmiInfo.className,
-      heightInput: settings.height ? String(settings.height) : '',
-      targetWeightInput: settings.targetWeight ? String(settings.targetWeight) : '',
+      ...(!this.data.settingsSheet && {
+        heightInput: settings.height ? String(settings.height) : '',
+        targetWeightInput: settings.targetWeight ? String(settings.targetWeight) : ''
+      }),
       targetWeight,
       targetDiff,
       targetProgress,
@@ -229,9 +242,11 @@ Page({
     });
   },
   editWeight(event) {
-    const id = event.currentTarget.dataset.id;
+    this.openWeightById(event.currentTarget.dataset.id);
+  },
+  openWeightById(id) {
     const record = store.state.records.fitness[id];
-    if (!record || record.deletedAt || !record.data) return;
+    if (!record || record.deletedAt || !record.data || record.data.kind !== 'weight') return;
     this.setData({ weightSheet: true, weightForm: { id, date: record.data.date, weight: String(record.data.weight), bodyfat: record.data.bodyfat ? String(record.data.bodyfat) : '' } });
   },
   closeWeight() { if (!this.data.saving) this.setData({ weightSheet: false }); },

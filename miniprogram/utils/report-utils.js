@@ -4,8 +4,9 @@ const { buildMemorySummary } = require('./memory-utils');
 const { buildCategoryBudgetProgress } = require('./ledger-utils');
 // 金额显示全应用统一走 finance.formatMoney（整数不带小数、小数去末尾 0），
 // 不能再各页各写一套：这里原先「整数原样、否则两位」会和记账页的 ¥54.5 打架。
+const { toCents, fromCents } = require('./amount');
 const { formatMoney } = require('./finance');
-const { isEntryDone } = require('./habit-utils');
+const { isEntryDone, isScheduled } = require('./habit-utils');
 
 function monthBounds(month) {
   const match = String(month || '').match(/^(\d{4})-(\d{2})$/);
@@ -26,10 +27,6 @@ function recordData(records) {
   return valuesOfRecords(records).map((record) => ({ id: record.id, ...record.data, updatedAt: record.updatedAt }));
 }
 
-function round(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
-}
-
 function oneDecimal(value) {
   return Math.round((Number(value) || 0) * 10) / 10;
 }
@@ -37,12 +34,12 @@ function oneDecimal(value) {
 function sumMoney(records, prefix) {
   let income = 0;
   let expense = 0;
-  const byCategory = {};
+  const byCategory = Object.create(null);
   const byDate = {};
   records.forEach((item) => {
     if (String(item.date || '').slice(0, 7) !== prefix) return;
-    const amount = Number(item.amount);
-    if (!Number.isFinite(amount) || amount < 0) return;
+    const amount = toCents(item.amount);
+    if (!(amount > 0)) return;
     if (item.type === 'income') income += amount;
     if (item.type === 'expense') {
       expense += amount;
@@ -53,7 +50,7 @@ function sumMoney(records, prefix) {
     const date = String(item.date || '');
     if (date && item.type === 'expense') byDate[date] = (byDate[date] || 0) + amount;
   });
-  return { income: round(income), expense: round(expense), byCategory, byDate };
+  return { income, expense, byCategory, byDate };
 }
 
 function habitSummary(records, bounds) {
@@ -62,11 +59,13 @@ function habitSummary(records, bounds) {
   records.filter((item) => item.kind === 'entry' && item.habitId && item.date >= bounds.start && item.date <= bounds.end)
     .forEach((item) => { entries[item.habitId + '|' + item.date] = item; });
   const days = Number(bounds.end.slice(-2));
-  let total = definitions.length * days;
+  let total = 0;
   let done = 0;
   definitions.forEach((definition) => {
     for (let day = 1; day <= days; day++) {
       const date = bounds.start.slice(0, 8) + String(day).padStart(2, '0');
+      if (!isScheduled(definition, date)) continue;
+      total++;
       const entry = entries[definition.id + '|' + date];
       if (isEntryDone(entry, definition)) done++;
     }
@@ -117,24 +116,24 @@ function buildMonthlyReport(source, month) {
   const previous = sumMoney(money, bounds.previous);
   const settings = recordData(source && source.settings);
   const appSettings = settings.find((item) => item.id === 'app') || settings[0] || {};
-  const budget = round(Math.max(0, Number(appSettings.budget) || 0));
+  const budget = Math.max(0, toCents(appSettings.budget) || 0);
   const categoryBudget = buildCategoryBudgetProgress(money, appSettings.categoryBudgets, month);
   const occurrences = derivePlanOccurrences(source && source.plan, bounds.start, bounds.end);
   const planRelevant = occurrences.filter((item) => !item.skipped);
   const planDone = planRelevant.filter((item) => item.done).length;
   const finance = {
-    income: current.income,
-    expense: current.expense,
-    balance: round(current.income - current.expense),
-    budget,
+    income: fromCents(current.income),
+    expense: fromCents(current.expense),
+    balance: fromCents(current.income - current.expense),
+    budget: fromCents(budget),
     budgetUsed: budget ? oneDecimal(current.expense * 100 / budget) : 0,
-    incomeChange: round(current.income - previous.income),
-    expenseChange: round(current.expense - previous.expense),
+    incomeChange: fromCents(current.income - previous.income),
+    expenseChange: fromCents(current.expense - previous.expense),
     categoryBudgets: categoryBudget.rows,
     overspent: categoryBudget.overspent,
-    topCategories: Object.keys(current.byCategory).map((category) => ({ category, amount: round(current.byCategory[category]) }))
+    topCategories: Object.keys(current.byCategory).map((category) => ({ category, amount: fromCents(current.byCategory[category]) }))
       .sort((a, b) => b.amount - a.amount || a.category.localeCompare(b.category, 'zh-Hans-CN')).slice(0, 3),
-    dailyTrend: Object.keys(current.byDate).sort().map((date) => ({ date, amount: round(current.byDate[date]) }))
+    dailyTrend: Object.keys(current.byDate).sort().map((date) => ({ date, amount: fromCents(current.byDate[date]) }))
   };
   const life = {
     habit: habitSummary(recordData(source && source.habit), bounds),

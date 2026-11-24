@@ -2,14 +2,17 @@ const store = require('../../utils/store');
 const sync = require('../../utils/sync');
 const ui = require('../../utils/ui');
 const api = require('../../utils/api');
+const runtime = require('../../config/runtime');
 const { formatMoney } = require('../../utils/finance');
 const { buildMonthlyReport } = require('../../utils/report-utils');
 const theme = require('../../utils/theme');
 const share = require('../../utils/share');
 
 function hasAiConsent() {
+  const { aiConsentKey } = runtime.getRuntimeConfig();
+  if (!aiConsentKey) return false;
   const setting = store.state.records.settings && store.state.records.settings.app;
-  return Boolean(setting && !setting.deletedAt && setting.data && setting.data.aiConsent === true);
+  return Boolean(setting && !setting.deletedAt && setting.data && setting.data[aiConsentKey] === true);
 }
 
 function monthString(date) {
@@ -48,16 +51,22 @@ Page({
   },
   unsub: null,
 
-  onLoad() {
-    theme.applyToPage(this);
-    this.setData({ month: monthString(new Date()) });
-    this.unsub = store.subscribe(() => this.render());
-    this.render();
-    this.loadAiSummary();
+  openCategoryDetails(event) {
+    const category = event.currentTarget.dataset.category;
+    wx.navigateTo({ url: '/pages/categories/categories?month=' + this.data.month + (category ? '&category=' + encodeURIComponent(category) : '') });
   },
-  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); this.loadAiSummary(); },
+
+  onLoad() {
+    this.setData({ month: monthString(new Date()) });
+    this.unsub = ui.bindStore(this,
+      ['money', 'habit', 'plan', 'fitness', 'media', 'settings', 'memories', '__sync__'],
+      () => this.render(),
+      () => ui.diffSetData(this, { offline: store.state.syncState === 'offline' }));
+  },
+  onShow() { this.__pageHidden = false; theme.applyToPage(this); share.enableShareMenu(); this.render(); this.loadAiSummary(); },
   onShareAppMessage: share.onShareAppMessage('report'),
   onShareTimeline: share.onShareTimeline('report'),
+  onHide() { this.__pageHidden = true; },
   onUnload() { this.unsub && this.unsub(); },
   retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() {
@@ -71,13 +80,13 @@ Page({
     const month = this.data.month || monthString(new Date());
     if (!api.getToken()) return;
     if (!hasAiConsent()) {
-      this.setData({ aiSummary: this.data.summary || '', aiSummaryLabel: '本机整理', aiSummaryLoading: false, aiSummaryKey: month, aiConsent: false });
+      this.setData({ aiSummary: this.data.summary || '', aiSummaryLabel: '本机整理', aiSummaryLoading: false, aiSummaryKey: '', aiConsent: false });
       return;
     }
     if (!force && (this.data.aiSummaryLoading || this.data.aiSummaryKey === month)) return;
     this.setData({ aiSummaryKey: month, aiSummaryLoading: true, aiConsent: true });
-    api.getInsight('month', month).then((result) => {
-      if (this.data.aiSummaryKey !== month) return;
+    sync.flush().then(() => hasAiConsent() && api.getInsight('month', month)).then((result) => {
+      if (this.data.aiSummaryKey !== month || !hasAiConsent()) return;
       const content = String(result && result.content || '').trim();
       if (!content) return;
       /* 内容到达时先瞬时降透明度再移除，触发一次淡入，避免正文无过渡地整体替换 */
@@ -88,7 +97,7 @@ Page({
       });
       setTimeout(() => this.setData({ aiSummaryFaded: false }), 30);
     }).catch(() => {
-      // 模型不可用时继续展示客户端确定性总结。
+      if (this.data.aiSummaryKey === month) this.setData({ aiSummaryKey: '', aiSummaryLoading: false });
     }).finally(() => {
       if (this.data.aiSummaryKey === month) this.setData({ aiSummaryLoading: false });
     });
@@ -127,7 +136,7 @@ Page({
       }))
     };
     const [year, number] = month.split('-');
-    this.setData({
+    ui.diffSetData(this, {
       month,
       monthText: year + ' 年 ' + Number(number) + ' 月',
       canNext: month < monthString(new Date()),

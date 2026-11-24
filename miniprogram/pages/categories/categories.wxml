@@ -1,0 +1,18 @@
+<view class="theme-page" style="{{themeStyle}}">
+  <view class="card">
+    <view class="card-title"><picker mode="date" fields="month" value="{{month}}" bindchange="selectMonth"><view>{{month}} ›</view></picker><text>¥{{totalText}}</text></view>
+    <view class="row">
+      <button class="btn {{type === 'expense' ? 'btn-primary' : 'btn-ghost'}}" data-type="expense" bindtap="selectType" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">支出</button>
+      <button class="btn {{type === 'income' ? 'btn-primary' : 'btn-ghost'}}" data-type="income" bindtap="selectType" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">收入</button>
+      <button class="btn {{type === 'transfer' ? 'btn-primary' : 'btn-ghost'}}" data-type="transfer" bindtap="selectType" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">转账</button>
+    </view>
+    <view wx:if="{{category}}" class="row category-line" bindtap="clearCategory" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><text>{{category}}</text><text>查看全部 ›</text></view>
+    <block wx:else><view wx:for="{{groups}}" wx:key="name" class="row category-line" data-category="{{item.name}}" bindtap="selectCategory" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><text>{{item.name}}</text><text>¥{{item.amount}} ›</text></view></block>
+  </view>
+  <view class="card">
+    <view class="card-title">流水</view>
+    <view wx:if="{{!rows.length}}" class="sub">这个月暂无匹配的流水。</view>
+    <view wx:for="{{rows}}" wx:key="id" class="row category-line"><view>{{item.note || item.name}}<view class="sub">{{item.date}} · {{item.accountText}}</view></view><text>¥{{item.amountText}}</text></view>
+    <button wx:if="{{hasMore}}" class="btn btn-ghost" bindtap="more" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">加载更多</button>
+  </view>
+</view>

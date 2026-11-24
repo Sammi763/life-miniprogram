@@ -1,5 +1,5 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，随记已暂存在本机</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
+<view wx:if="{{offline}}" class="banner"><text>网络连接异常</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
 
 <view class="memory-page">
   <view class="memory-head">
@@ -10,6 +10,8 @@
     </view>
     <view class="memory-search" bindtap="goSearch" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90"><text class="memory-search-icon">⌕</text><text>搜索</text></view>
   </view>
+
+  <button class="btn btn-ghost" bindtap="openDeleted" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90">最近删除</button>
 
   <view class="memory-hero" bindtap="openComposer" hover-class="record-card-pressed" hover-start-time="20" hover-stay-time="90">
     <view class="memory-hero-copy">

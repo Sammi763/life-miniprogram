@@ -1,4 +1,5 @@
 const api = require('../../utils/api');
+const avatar = require('../../utils/avatar');
 const sync = require('../../utils/sync');
 const { buildTextAvatar } = require('../../utils/text-avatar');
 const { BUILD_VERSION } = require('../../config/build');
@@ -90,14 +91,14 @@ Page({
       .then((profile) => {
         if (editingProfile) {
           this.setData({ entering: false, loggedIn: true, ...profileData(profile) });
+          this.loadAvatar(profile);
           return;
         }
         if (!this.data.termsAccepted) {
           this.setData({ entering: false, existingSessionNeedsTerms: true, serverError: '继续使用前，请先阅读并同意用户协议与隐私政策。' });
           return;
         }
-        sync.init();
-        wx.switchTab({ url: '/pages/today/today', fail: () => this.setData({ entering: false }) });
+        this.enterToday();
       })
       .catch((error) => {
         this.setData({ entering: false, serverError: loginErrorMessage(error), loginFailed: true });
@@ -125,8 +126,13 @@ Page({
     })
       .then((profile) => {
         rememberTerms();
-        this.setData({ loggedIn: true, loginStatus: '', loginFailed: false, ...profileData(profile) });
-        completionToast = { title: '登录成功', icon: 'success' };
+        this.setData({ loginStatus: '', loginFailed: false, ...profileData(profile) });
+        if (this.data.editingProfile) {
+          this.setData({ loggedIn: true });
+          this.loadAvatar(profile);
+        } else {
+          this.enterToday();
+        }
       })
       .catch((error) => {
         this.setData({ serverError: loginErrorMessage(error), loginStatus: '', loginFailed: true });
@@ -137,6 +143,15 @@ Page({
         this.setData({ loggingIn: false });
         if (completionToast) wx.showToast(completionToast);
       });
+  },
+
+  enterToday() {
+    this.setData({ entering: true });
+    sync.init();
+    wx.switchTab({
+      url: '/pages/today/today',
+      fail: () => this.setData({ entering: false, serverError: '暂时无法打开首页，请重试。' })
+    });
   },
 
   /*
@@ -168,19 +183,37 @@ Page({
     wx.navigateTo({ url: '/pages/legal/legal?doc=' + encodeURIComponent(doc) });
   },
 
+  loadAvatar(profile) {
+    this.setData({ avatarEnabled: typeof profile.avatarVersion === 'string', hasAvatar: Boolean(profile.avatarVersion) });
+    avatar.load(profile).then((path) => {
+      if (!this.data.avatarChanged) this.setData({ avatarPath: path });
+    });
+  },
+
+  chooseAvatar(event) {
+    const path = event.detail && event.detail.avatarUrl;
+    if (path && !this.data.saving) this.setData({ avatarChanged: true, avatarPath: path, hasAvatar: true });
+  },
+
+  resetAvatar() {
+    if (!this.data.saving) this.setData({ avatarChanged: true, avatarPath: '', hasAvatar: false });
+  },
+
+  avatarError() { this.setData({ avatarPath: '', avatarChanged: false, hasAvatar: Boolean(api.getProfile().avatarVersion) }); },
+
   completeProfile() {
-    if (this.data.saving) return;
+    if (this.data.saving || !this.data.editingProfile) return;
     this.setData({ saving: true });
-    api.updateProfile({ nickname: String(this.data.nickname || '').trim() })
-      .then(() => {
-        if (this.data.editingProfile) {
-          wx.switchTab({ url: '/pages/mine/mine' });
-          return;
-        }
-        sync.init();
-        wx.switchTab({ url: '/pages/today/today' });
-      })
-      .catch(() => wx.showToast({ title: '资料保存失败，请重试', icon: 'none' }))
+    const picture = this.data.avatarChanged ? avatar.save(this.data.avatarPath) : Promise.resolve();
+    picture.then(() => {
+      this.setData({ avatarChanged: false });
+      return api.updateProfile({ nickname: String(this.data.nickname || '').trim() });
+    })
+      .then(() => wx.switchTab({ url: '/pages/mine/mine' }))
+      .catch((error) => wx.showToast({
+        title: error.code === 'bad_avatar' ? '头像格式或大小不支持' : error.message === '头像文件过大' ? error.message : '资料保存失败，请重试',
+        icon: 'none'
+      }))
       .finally(() => this.setData({ saving: false }));
   }
 });

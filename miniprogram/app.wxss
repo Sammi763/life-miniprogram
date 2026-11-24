@@ -90,7 +90,8 @@ page {
 .btn-line { background:var(--surface); border:1rpx solid var(--line); color:var(--ink); }
 .btn[disabled] { opacity:.5; }
 
-.chip { padding:10rpx 22rpx; border-radius:999rpx; background:var(--surface); border:1rpx solid var(--line); color:var(--ink-2); font-size:24rpx; line-height:1.4; }
+/* U09：chips 是高频触控目标，热区提到 ~64rpx 高（44 逻辑像素目标的折中，不破坏布局） */
+.chip { padding:14rpx 26rpx; border-radius:999rpx; background:var(--surface); border:1rpx solid var(--line); color:var(--ink-2); font-size:24rpx; line-height:1.4; }
 .chip.on { background:var(--accent); border-color:var(--accent); color:#fff; }
 
 .banner { margin:20rpx 24rpx 0; padding:18rpx 24rpx; border-radius:18rpx; background:var(--warn-soft); color:var(--amber); font-size:24rpx; display:flex; justify-content:space-between; align-items:center; }
@@ -109,7 +110,7 @@ page {
 
 /*
  * 弹层必须盖住悬浮导航与悬浮按钮。
- * custom-tab-bar 的 .tabbar-shell 是 z-index:100，pages/money|habit 的 .fab 是 101；
+ * custom-tab-bar 的 .tabbar-shell 是 z-index:100，习惯页的 .fab 是 101。
  * 旧值 mask:9 / sheet:10 全都低于它们，于是弹层底部被压在导航条之下 ——
  * 实测（iPhone 12/13 模拟器）「记一笔」的「保存」按钮落在 [655,699]，
  * 而 tabbar 是 [653,753]，按钮 100% 被遮住：用户能打开弹层、能输入，却点不到保存。

@@ -1,4 +1,5 @@
 const assert = require('assert');
+const { BUILD_VERSION } = require('../miniprogram/config/build');
 
 const storage = {};
 let loginCodes = [];
@@ -65,7 +66,7 @@ async function main() {
     assert.deepStrictEqual(requestOptions.map((item) => item.data.code), ['code-reset-first', 'code-reset-second', 'code-reset-third']);
     assert.strictEqual(requestOptions[0].timeout, 10000, 'POST /api/login must time out at ten seconds');
     assert.strictEqual(requestOptions[0].url.endsWith('/api/login'), true);
-    assert.strictEqual(requestOptions[0].header['X-Client-Build'], '20260924.8');
+    assert.strictEqual(requestOptions[0].header['X-Client-Build'], BUILD_VERSION);
     assert.ok(elapsed >= 1700 && elapsed < 4000, 'two retries should use the first two bounded backoff steps');
     assert.deepStrictEqual(retryEvents.map((event) => [event.retry, event.maxRetries, event.category]), [
       [1, 4, 'network_reset'],
@@ -159,7 +160,7 @@ async function main() {
       'code-401', 'code-unknown-network', 'token-reset-success', 'token-timeout-success',
       'token-refused-success', 'token-reset-only-success', 'profile-retry-token', '本地模拟昵称'
     ]) assert.strictEqual(logText.includes(secret), false, 'login logs must not contain codes or tokens');
-    assert.match(logText, /"buildVersion":"20260924\.8"/);
+    assert.ok(logText.includes(JSON.stringify({ buildVersion: BUILD_VERSION }).slice(1, -1)));
     assert.match(logText, /"serverPhase":"wechat_code2session"/);
     assert.match(logText, /"durationMs":\d+/);
 

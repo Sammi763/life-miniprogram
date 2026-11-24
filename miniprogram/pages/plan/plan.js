@@ -6,7 +6,8 @@ const {
   addDays,
   derivePlanOccurrences,
   getWeekDates,
-  makeOccurrenceId,
+  occurrencePatch,
+  parseDate,
   summarizeOccurrences
 } = require('../../utils/plan-utils');
 const { buildBillAlerts } = require('../../utils/ledger-utils');
@@ -29,7 +30,7 @@ function dueAtFor(date, time) {
 function emptyForm(date) {
   return {
     id: '', sourceKind: 'one', title: '', date, time: '', done: false,
-    repeat: 'none', repeatDay: '1', endDate: '', remind: false, pinned: false
+    repeat: 'none', repeatDay: '1', endDate: '', remind: false, pinned: false, subtasks: [], subtaskTitle: ''
   };
 }
 
@@ -63,21 +64,38 @@ Page({
     theme.applyToPage(this);
     const today = todayString();
     this.setData({ weekStart: getWeekDates(today)[0], selectedDate: today });
-    this.unsub = store.subscribe(() => this.render());
+    this.unsub = ui.bindStore(this, ['plan', 'settings', 'accounts', 'money', '__sync__'],
+      () => this.render(),
+      () => this.renderSyncState());
     this.loadReminderCapability();
     this.render();
     /* 搜索深链：直接定位到对应日程所在周并打开编辑 */
     if (options && options.id) {
       const source = store.state.records.plan[options.id];
-      if (source && !source.deletedAt && source.data) this.openEditById(options.id);
+      if (source && !source.deletedAt && source.data) {
+        if (source.data.kind === 'series' && parseDate(options.date)) {
+          this.setData({ weekStart: getWeekDates(options.date)[0], selectedDate: options.date });
+          this.render();
+          return;
+        }
+        this.openEditById(options.id);
+      }
+      return;
     }
+    /* U01 一次性新增意图：今日页「排日程」直达新增表单 */
+    if (options && options.create === '1') this.openAdd();
   },
-  onShow() { theme.applyToPage(this); share.enableShareMenu(); this.render(); },
+  onShow() { this.__pageHidden = false; theme.applyToPage(this); share.enableShareMenu(); this.render(); },
   onShareAppMessage: share.onShareAppMessage('plan'),
   onShareTimeline: share.onShareTimeline('plan'),
+  onHide() { this.__pageHidden = true; },
   onUnload() {
     this.unsub && this.unsub();
     clearTimeout(this.__undoTimer);
+  },
+  /* 同步状态变化只更新状态横幅，不做整页重算（性能方案 §5） */
+  renderSyncState() {
+    ui.diffSetData(this, { offline: store.state.syncState === 'offline' });
   },
   retrySync() { return ui.retryWithFeedback(() => sync.pull()); },
   onPullDownRefresh() {
@@ -117,7 +135,7 @@ Page({
       timeText: item.time || '全天',
       repeatText: item.isVirtual ? '重复事项' : '',
       overdue: !item.done && !item.skipped && item.date < today,
-      reminderText: item.reminder && item.reminder.enabled ? '到时提醒已开启' : ''
+      reminderText: !item.done && item.reminder && item.reminder.enabled ? '到时提醒已开启' : ''
     }));
     this.currentItems = items;
     this.setData({
@@ -151,7 +169,12 @@ Page({
     if (!item) return;
     const source = store.state.records.plan[item.sourceId || item.id];
     if (!source || source.deletedAt || !source.data) return;
-    this.fillFormFromSource(source, item.date);
+    if (item.isVirtual) {
+      wx.showActionSheet({
+        itemList: ['只编辑这一次', '编辑整个系列'],
+        success: ({ tapIndex }) => tapIndex === 0 ? this.editOccurrence(item) : this.fillFormFromSource(source, item.date)
+      });
+    } else this.fillFormFromSource(source, item.date);
   },
   /* 深链打开：按记录 id 直接构造表单，并把周历定位到该日程所在周 */
   openEditById(id) {
@@ -168,7 +191,12 @@ Page({
         this.render();
         return;
       }
-      source = series;
+      const date = source.data.date;
+      this.setData({ weekStart: getWeekDates(date)[0], selectedDate: date });
+      this.render();
+      const item = this.findItem(id);
+      if (item) this.editOccurrence(item);
+      return;
     }
     const data = source.data;
     const anchorDate = data.kind === 'series' ? (data.startDate || todayString()) : (data.date || todayString());
@@ -184,7 +212,7 @@ Page({
           id: source.id, sourceKind: 'series', title: source.data.title || '', date: source.data.startDate || fallbackDate,
           time: source.data.time || '', done: false, repeat: source.data.repeat || 'daily',
           repeatDay: String(Number(source.data.repeatDay) || (source.data.startDate || fallbackDate || '').slice(-2) || '1'),
-          endDate: source.data.endDate || '', remind: false, pinned: Boolean(source.data.pinned)
+          endDate: source.data.endDate || '', remind: false, pinned: Boolean(source.data.pinned), subtasks: source.data.subtasks || [], subtaskTitle: ''
         }
       });
       return;
@@ -194,9 +222,51 @@ Page({
       form: {
         id: source.id, sourceKind: 'one', title: source.data.title || '', date: source.data.date || fallbackDate,
         time: source.data.time || '', done: Boolean(source.data.done), repeat: 'none', repeatDay: '1', endDate: '',
-        remind: Boolean(source.data.reminder && source.data.reminder.enabled), pinned: Boolean(source.data.pinned)
+        remind: Boolean(source.data.reminder && source.data.reminder.enabled), pinned: Boolean(source.data.pinned), subtasks: source.data.subtasks || [], subtaskTitle: ''
       }
     });
+  },
+  editOccurrence(item) {
+    this.setData({ sheetShow: true, form: {
+      ...emptyForm(item.date), id: item.id, sourceKind: 'occurrence', sourceId: item.sourceId, title: item.title, time: item.time
+    } });
+  },
+  onSubtaskTitle(event) { this.setData({ 'form.subtaskTitle': event.detail.value }); },
+  addSubtask() {
+    const { subtasks, subtaskTitle } = this.data.form;
+    const title = String(subtaskTitle || '').trim();
+    if (!title || subtasks.length >= 12) return;
+    const id = 't' + Date.now().toString(36) + Math.random().toString(36).slice(2, 9);
+    this.setData({ 'form.subtasks': subtasks.concat({ id, title, done: false }), 'form.subtaskTitle': '' });
+  },
+  removeSubtask(event) {
+    this.setData({ 'form.subtasks': this.data.form.subtasks.filter((task) => task.id !== event.currentTarget.dataset.id) });
+  },
+  moveSubtask(event) {
+    const tasks = this.data.form.subtasks.slice();
+    const index = tasks.findIndex((task) => task.id === event.currentTarget.dataset.id);
+    if (index <= 0) return;
+    [tasks[index - 1], tasks[index]] = [tasks[index], tasks[index - 1]];
+    this.setData({ 'form.subtasks': tasks });
+  },
+  patchOccurrence(item, patch) {
+    const entry = occurrencePatch(store.state.records.plan, item, patch);
+    sync.upsert('plan', entry.data, entry.id);
+  },
+  toggleSubtask(event) {
+    const item = this.findItem(event.currentTarget.dataset.id);
+    const task = item && item.subtasks.find((entry) => entry.id === event.currentTarget.dataset.task);
+    if (!task) return;
+    const tasks = item.subtasks.map((entry) => entry.id === task.id ? { ...entry, done: !entry.done } : entry);
+    if (item.isVirtual) this.patchOccurrence(item, { completedSubtasks: tasks.filter((entry) => entry.done).map((entry) => entry.id) });
+    else {
+      const record = store.state.records.plan[item.id];
+      if (record && !record.deletedAt) sync.upsert('plan', { ...record.data, subtasks: tasks }, item.id);
+    }
+  },
+  openFocus(event) {
+    const item = this.findItem(event.currentTarget.dataset.id);
+    if (item) wx.navigateTo({ url: '/pages/focus/focus?kind=plan&id=' + encodeURIComponent(item.id) + '&title=' + encodeURIComponent(item.title) });
   },
   closeSheet() { if (!this.data.saving) this.setData({ sheetShow: false }); },
   noop() {},
@@ -226,6 +296,12 @@ Page({
     if (title.length > 30) return wx.showToast({ title: '标题最多 30 个字', icon: 'none' });
     if (!form.date) return wx.showToast({ title: '请选择日期', icon: 'none' });
     if (ui.isRepeatedTap(this, 'plan-save', 800)) return;
+    if (form.sourceKind === 'occurrence') {
+      this.patchOccurrence(form, { titleOverride: title, timeOverride: form.time });
+      this.setData({ sheetShow: false });
+      return;
+    }
+    const tasks = form.subtasks || [];
     if (form.repeat !== 'none') {
       const record = {
         kind: 'series', title, startDate: form.date, time: form.time || '', repeat: form.repeat,
@@ -237,45 +313,55 @@ Page({
         if (!Number.isInteger(day) || day < 1 || day > 31) return wx.showToast({ title: '请选择每月重复日期', icon: 'none' });
         record.repeatDay = day;
       }
+      if (tasks.length || (form.id && store.state.records.plan[form.id] && store.state.records.plan[form.id].data.subtasks)) record.subtasks = tasks.map(({ id, title }) => ({ id, title }));
       if (form.pinned) record.pinned = true;
       sync.upsert('plan', record, form.id || undefined);
       this.setData({ sheetShow: false });
       return;
     }
     const dueAt = dueAtFor(form.date, form.time);
-    const canRemind = Boolean(form.remind && this.data.reminder.enabled && dueAt > Date.now() + 30 * 1000 && !form.done);
-    if (form.remind && !canRemind) {
-      return wx.showToast({ title: '提醒仅支持未来的单次定时日程', icon: 'none' });
-    }
+    const previous = store.state.records.plan[form.id];
+    const reminder = previous && !previous.deletedAt && previous.data.reminder;
+    const wantsReminder = form.remind && !form.done;
+    const keepReminder = form.remind && reminder && reminder.enabled && reminder.dueAt === dueAt;
     const record = {
       title, date: form.date, time: form.time || '', done: Boolean(form.done),
-      reminder: canRemind ? { enabled: true, dueAt } : { enabled: false }
+      reminder: keepReminder ? reminder : { enabled: false }
     };
+    if (tasks.length || (previous && previous.data.subtasks)) record.subtasks = tasks;
     if (form.pinned) record.pinned = true;
     const id = sync.upsert('plan', record, form.id || undefined);
     this.setData({ sheetShow: false });
-    if (!canRemind) return;
-    this.enableReminderAfterSave(id, dueAt);
-  },
 
-  enableReminderAfterSave(id, dueAt) {
-    api.requestReminderSubscription(this.data.reminder.templateId).then((accepted) => {
-      if (!accepted) {
-        this.disableReminder(id, '日程已保存，未开启提醒');
-        return;
-      }
-      return sync.flush().then(() => api.scheduleReminder(id, dueAt)).then(() => {
-        wx.showToast({ title: '日程与提醒已保存', icon: 'success' });
-      }).catch(() => this.disableReminder(id, '日程已保存，提醒设置失败'));
-    });
-  },
-
-  disableReminder(id, message) {
-    const record = store.state.records.plan[id];
-    if (record && !record.deletedAt && record.data) {
-      sync.upsert('plan', { ...record.data, reminder: { enabled: false } }, id);
+    if (!wantsReminder || keepReminder) return;
+    if (!this.data.reminder.enabled || dueAt <= Date.now() + 30000 || dueAt > Date.now() + 366 * 86400000) {
+      wx.showToast({ title: '日程已保存，当前无法设置提醒', icon: 'none' });
+      return;
     }
-    wx.showToast({ title: message, icon: 'none' });
+    return this.enableReminderAfterSave(id, dueAt, store.state.records.plan[id]);
+  },
+
+  async enableReminderAfterSave(id, dueAt, saved) {
+    const accepted = await api.requestReminderSubscription(this.data.reminder.templateId);
+    const current = store.state.records.plan[id];
+    if (!current || !saved || current.deletedAt || current.updatedAt !== saved.updatedAt) return;
+    if (!accepted) {
+      wx.showToast({ title: '日程已保存，未开启提醒', icon: 'none' });
+      return;
+    }
+    sync.upsert('plan', { ...current.data, reminder: { enabled: true, dueAt } }, id);
+    try {
+      await sync.flush();
+      await api.scheduleReminder(id, dueAt);
+      wx.showToast({ title: '日程与提醒已保存', icon: 'success' });
+    } catch (error) {
+      const latest = store.state.records.plan[id];
+      const reminder = latest && !latest.deletedAt && latest.data.reminder;
+      if (reminder && reminder.enabled && reminder.dueAt === dueAt && !latest.data.done) {
+        sync.upsert('plan', { ...latest.data, reminder: { enabled: false } }, id);
+        wx.showToast({ title: '日程已保存，提醒设置失败', icon: 'none' });
+      }
+    }
   },
 
   findItem(id) { return this.currentItems.find((item) => item.id === id); },
@@ -284,16 +370,14 @@ Page({
     if (!item) return;
     if (ui.isRepeatedTap(this, 'plan-toggle-' + item.id, 400)) return;
     if (item.isVirtual) {
-      sync.upsert('plan', {
-        kind: 'occurrence', seriesId: item.sourceId, date: item.date,
-        done: !item.done, skipped: false
-      }, makeOccurrenceId(item.sourceId, item.date));
+      this.patchOccurrence(item, { done: !item.done, skipped: false });
       if (!item.done) ui.completeFeedback({});
       return;
     }
     const record = store.state.records.plan[item.id];
     if (record && !record.deletedAt) {
-      sync.upsert('plan', { ...record.data, done: !item.done, skipped: false }, item.id);
+      const data = { ...record.data, done: !item.done, skipped: false };
+      sync.upsert('plan', data, item.id);
       if (!item.done) ui.completeFeedback({});
     }
   },
@@ -323,10 +407,7 @@ Page({
     if (source && !source.deletedAt && source.data) sync.upsert('plan', { ...source.data, pinned: !source.data.pinned }, id);
   },
   skipOccurrence(item) {
-    sync.upsert('plan', {
-      kind: 'occurrence', seriesId: item.sourceId, date: item.date,
-      done: false, skipped: true
-    }, makeOccurrenceId(item.sourceId, item.date));
+    this.patchOccurrence(item, { done: false, skipped: true });
   },
   /* 删除单次日程：立即执行 + 5 秒撤销条 */
   removeOneOff(item) {

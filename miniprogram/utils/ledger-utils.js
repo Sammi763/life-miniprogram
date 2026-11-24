@@ -1,44 +1,37 @@
 /* 手工账本计算。银行、支付平台和征信数据永远不会被读取或上传。 */
-function round(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
-}
+const { repaymentId, billRepaymentCents, remainingBillCents } = require('./money-rules');
+const { toCents, fromCents } = require('./amount');
 
 function oneDecimal(value) {
   return Math.round((Number(value) || 0) * 10) / 10;
 }
 
 function values(records) {
-  const input = Array.isArray(records) ? records : Object.values(records || {});
-  return input.map((record, index) => {
+  return Object.entries(records || {}).map(([key, record]) => {
     const data = record && record.data && typeof record.data === 'object' ? record.data : record;
     if (!record || record.deletedAt || !data || typeof data !== 'object') return null;
-    return { id: String(record.id || data.id || index), data, updatedAt: Number(record.updatedAt || data.updatedAt || 0) };
+    return { id: String(record.id || data.id || key), data, updatedAt: Number(record.updatedAt || data.updatedAt || 0) };
   }).filter(Boolean);
-}
-
-function number(value, fallback) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : (fallback || 0);
 }
 
 function normalizeAccount(record) {
   const data = record.data;
   if (!['asset', 'liability'].includes(data.kind) || !String(data.name || '').trim()) return null;
-  const hasOpening = Number.isFinite(Number(data.openingBalance));
-  const openingBalance = hasOpening ? number(data.openingBalance) : Math.max(0, number(data.balance));
+  const hasOpening = Number.isFinite(toCents(data.openingBalance));
+  const opening = hasOpening ? toCents(data.openingBalance) : Math.max(0, toCents(data.balance) || 0);
   return {
     id: record.id,
     kind: data.kind,
     name: String(data.name).trim(),
     category: String(data.category || '其他'),
     note: String(data.note || ''),
-    openingBalance: round(openingBalance),
-    manualAdjustment: round(number(data.manualAdjustment)),
-    currentBill: Math.max(0, round(number(data.currentBill))),
-    minimumPayment: Math.max(0, round(number(data.minimumPayment))),
+    openingBalance: fromCents(opening),
+    manualAdjustment: fromCents(toCents(data.manualAdjustment) || 0),
+    currentBill: Math.max(0, fromCents(toCents(data.currentBill) || 0)),
+    minimumPayment: Math.max(0, fromCents(toCents(data.minimumPayment) || 0)),
     statementDay: Number.isInteger(Number(data.statementDay)) ? Number(data.statementDay) : 0,
     dueDay: Number.isInteger(Number(data.dueDay)) ? Number(data.dueDay) : 0,
-    legacyBalance: !hasOpening && Number.isFinite(Number(data.balance))
+    legacyBalance: !hasOpening && Number.isFinite(toCents(data.balance))
   };
 }
 
@@ -54,18 +47,18 @@ function calculateAccountBalances(accountRecords, moneyRecords) {
   const rows = values(accountRecords).map(normalizeAccount).filter(Boolean);
   const byId = {};
   rows.forEach((account) => {
-    byId[account.id] = { ...account, flow: 0, balance: round(account.openingBalance + account.manualAdjustment) };
+    byId[account.id] = { ...account, flow: 0, balance: toCents(account.openingBalance) + toCents(account.manualAdjustment) };
   });
   const apply = (id, direction, amount) => {
     const account = byId[String(id || '')];
     if (!account) return;
     const delta = changeFor(account.kind, direction, amount);
-    account.flow = round(account.flow + delta);
-    account.balance = round(account.balance + delta);
+    account.flow += delta;
+    account.balance += delta;
   };
   values(moneyRecords).forEach((record) => {
     const data = record.data;
-    const amount = number(data.amount);
+    const amount = toCents(data.amount);
     if (!(amount > 0)) return;
     if (data.type === 'income') apply(data.accountId, 'income', amount);
     if (data.type === 'expense') apply(data.accountId, 'expense', amount);
@@ -82,14 +75,16 @@ function calculateAccountBalances(accountRecords, moneyRecords) {
   list.forEach((account) => {
     if (account.kind === 'liability') { liabilityTotal += account.balance; liabilityCount++; }
     else { assetTotal += account.balance; assetCount++; }
+    account.flow = fromCents(account.flow);
+    account.balance = fromCents(account.balance);
   });
   return {
     list,
     byId,
     overview: {
-      assetTotal: round(assetTotal),
-      liabilityTotal: round(liabilityTotal),
-      netAssets: round(assetTotal - liabilityTotal),
+      assetTotal: fromCents(assetTotal),
+      liabilityTotal: fromCents(liabilityTotal),
+      netAssets: fromCents(assetTotal - liabilityTotal),
       assetCount,
       liabilityCount,
       accountCount: assetCount + liabilityCount
@@ -104,13 +99,13 @@ function summarizeMoney(records, period) {
   values(records).forEach((record) => {
     const data = record.data;
     if (period && String(data.date || '').slice(0, period.length) !== period) return;
-    const amount = number(data.amount);
+    const amount = toCents(data.amount);
     if (!(amount > 0)) return;
     if (data.type === 'income') income += amount;
     if (data.type === 'expense') expense += amount;
     if (data.type === 'transfer') transfer += amount;
   });
-  return { income: round(income), expense: round(expense), balance: round(income - expense), transfer: round(transfer) };
+  return { income: fromCents(income), expense: fromCents(expense), balance: fromCents(income - expense), transfer: fromCents(transfer) };
 }
 
 function dueDateFor(day, now) {
@@ -130,8 +125,7 @@ function dueDateFor(day, now) {
 }
 
 function buildBillAlerts(accountRecords, moneyRecords, now, horizon) {
-  // moneyRecords 保留在签名中，便于后续基于流水估算本期应还；当前只显示用户明确手工填写的账单。
-  void moneyRecords;
+  const paid = billRepaymentCents(moneyRecords);
   const today = now instanceof Date ? now : new Date();
   const maxDays = horizon === undefined ? 7 : Number(horizon);
   return values(accountRecords).map(normalizeAccount).filter((account) => {
@@ -144,36 +138,38 @@ function buildBillAlerts(accountRecords, moneyRecords, now, horizon) {
       dueDate: due.date,
       daysLeft: due.daysLeft,
       currentBill: account.currentBill,
-      minimumPayment: account.minimumPayment
+      paidAmount: (paid.get(repaymentId(account.id, due.date)) || 0) / 100,
+      remainingBill: remainingBillCents(account.currentBill, paid, account.id, due.date) / 100,
+      minimumPayment: remainingBillCents(account.minimumPayment, paid, account.id, due.date) / 100
     };
-  }).filter((item) => item.daysLeft >= 0 && item.daysLeft <= maxDays)
+  }).filter((item) => item.daysLeft >= 0 && item.daysLeft <= maxDays && item.remainingBill > 0)
     .sort((a, b) => a.daysLeft - b.daysLeft || a.name.localeCompare(b.name, 'zh-Hans-CN'));
 }
 
 function buildCategoryBudgetProgress(moneyRecords, categoryBudgets, month) {
-  const spent = {};
+  const spent = Object.create(null);
   values(moneyRecords).forEach((record) => {
     const data = record.data;
     if (data.type !== 'expense' || String(data.date || '').slice(0, 7) !== month) return;
-    const amount = number(data.amount);
+    const amount = toCents(data.amount);
     if (!(amount > 0)) return;
     const category = String(data.category || '其他');
-    spent[category] = round((spent[category] || 0) + amount);
+    spent[category] = (spent[category] || 0) + amount;
   });
   const budgets = categoryBudgets && typeof categoryBudgets === 'object' && !Array.isArray(categoryBudgets) ? categoryBudgets : {};
   const names = Object.keys(budgets);
   const rows = names.map((category) => {
-    const budget = Math.max(0, round(number(budgets[category])));
-    const amount = round(spent[category] || 0);
-    const over = Math.max(0, round(amount - budget));
+    const budget = Math.max(0, toCents(budgets[category]) || 0);
+    const amount = spent[category] || 0;
+    const over = Math.max(0, amount - budget);
     return {
       category,
-      budget,
-      spent: amount,
-      remaining: Math.max(0, round(budget - amount)),
+      budget: fromCents(budget),
+      spent: fromCents(amount),
+      remaining: fromCents(Math.max(0, budget - amount)),
       used: budget ? oneDecimal(amount * 100 / budget) : 0,
-      over,
-      suggested: Math.ceil(Math.max(budget, amount * 1.2) / 50) * 50
+      over: fromCents(over),
+      suggested: Math.ceil(Math.max(budget * 5, amount * 6) / 25000) * 50
     };
   });
   return { rows, overspent: rows.filter((row) => row.over > 0) };
@@ -185,25 +181,26 @@ function buildCategoryBudgetProgress(moneyRecords, categoryBudgets, month) {
  */
 function buildBudgetAdvice(settingsRecord, moneyRecords, shoppingRecords, month) {
   const data = settingsRecord && !settingsRecord.deletedAt && settingsRecord.data ? settingsRecord.data : {};
-  const budget = number(data.budget);
+  const budget = toCents(data.budget);
   if (!(budget > 0)) return null;
   let monthOut = 0;
   values(moneyRecords).forEach((record) => {
     const item = record.data;
-    if (item.type === 'expense' && String(item.date || '').slice(0, 7) === month) monthOut += number(item.amount);
+    if (item.type === 'expense' && String(item.date || '').slice(0, 7) === month) monthOut += toCents(item.amount) || 0;
   });
   let pendingEstimate = 0;
   values(shoppingRecords).forEach((record) => {
     const item = record.data;
-    if (!item.done && number(item.price) > 0) pendingEstimate += number(item.price);
+    const price = toCents(item.price);
+    if (!item.done && price > 0) pendingEstimate += price;
   });
-  const total = round(monthOut + pendingEstimate);
+  const total = monthOut + pendingEstimate;
   if (total <= budget) return null;
   return {
-    budget: round(budget),
-    monthOut: round(monthOut),
-    pendingEstimate: round(pendingEstimate),
-    over: round(total - budget)
+    budget: fromCents(budget),
+    monthOut: fromCents(monthOut),
+    pendingEstimate: fromCents(pendingEstimate),
+    over: fromCents(total - budget)
   };
 }
 

@@ -1,5 +1,5 @@
 <view class="theme-page" style="{{themeStyle}}">
-<view wx:if="{{offline}}" class="banner"><text>云端暂不可用，改动已暂存本机</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
+<view wx:if="{{offline}}" class="banner"><text>网络连接异常</text><view class="banner-action tap-row" hover-class="tap-pressed" hover-start-time="20" hover-stay-time="90" bindtap="retrySync">重试</view></view>
 
 <view class="card year-card">
   <view class="card-title"><text>今年看过</text><text class="more">平均 {{stats.average}} 星</text></view>

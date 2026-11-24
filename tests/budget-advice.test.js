@@ -43,7 +43,7 @@ function record(type, amount, date, done) {
   /* 页面接线：建议卡只读 + 直达「我的」，wxml 不得出现自动修改预算/待买的行为 */
   const todayWxml = fs.readFileSync(path.join(root, 'miniprogram/pages/today/today.wxml'), 'utf8');
   assert.match(todayWxml, /budgetAdvice/, 'today 页必须渲染预算建议卡');
-  assert.match(todayWxml, /bindtap="goMine"/, '建议卡必须可跳转「我的」查看预算');
+  assert.match(todayWxml, /bindtap="goBudget"/, '建议卡必须直达记账页预算编辑器（U05 预算已迁回记账）');
   const todayJs = fs.readFileSync(path.join(root, 'miniprogram/pages/today/today.js'), 'utf8');
   assert.ok(/buildBudgetAdvice/.test(todayJs), 'today 页必须调用 buildBudgetAdvice');
   const ledgerUtils = fs.readFileSync(path.join(root, 'miniprogram/utils/ledger-utils.js'), 'utf8');

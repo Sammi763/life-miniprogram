@@ -1,5 +1,6 @@
+const { formatMoney } = require('./finance');
 const { addDays, derivePlanOccurrences, makeOccurrenceId, valuesOfRecords } = require('./plan-utils');
-const { isEntryDone, entryTarget } = require('./habit-utils');
+const { isEntryDone, entryTarget, isScheduled } = require('./habit-utils');
 
 function todayHabitItems(records, date) {
   const definitions = {};
@@ -9,7 +10,7 @@ function todayHabitItems(records, date) {
     if (data.kind === 'def') definitions[record.id] = record;
     if (data.kind === 'entry' && data.date === date) entries[data.habitId] = record;
   });
-  return Object.keys(definitions).map((id) => {
+  return Object.keys(definitions).filter((id) => isScheduled(definitions[id], date)).map((id) => {
     const record = definitions[id];
     const data = record.data;
     const entry = entries[id];
@@ -48,8 +49,9 @@ function todayPlanItems(records, date) {
     isVirtual: false,
     date: record.data.date
   }));
-  const virtual = derivePlanOccurrences(normalized, addDays(date, -30), date)
-    .filter((item) => item.isVirtual && !item.skipped)
+  const seriesRecords = normalized.filter((record) => record.data.kind === 'series' || record.data.kind === 'occurrence');
+  const virtual = derivePlanOccurrences(seriesRecords, addDays(date, -30), date)
+    .filter((item) => !item.skipped)
     .map((item) => ({
       id: item.id,
       kind: 'plan',
@@ -76,7 +78,7 @@ function todayShoppingItems(records) {
     kind: 'shopping',
     sourceId: record.id,
     title: String(record.data.name),
-    subtitle: record.data.price ? '预估 ¥' + Number(record.data.price) : '待买清单',
+    subtitle: record.data.price ? '预估 ¥' + formatMoney(record.data.price) : '待买清单',
     done: false,
     pinned: Boolean(record.data.pinned),
     overdue: false

@@ -82,8 +82,8 @@ try {
   store.state.records.plan[occurrenceId] = { id: occurrenceId, data: { kind: 'occurrence', seriesId: 'series', date: today, done: true, skipped: false }, updatedAt: 3, deletedAt: 0 };
   page.data.sheetShow = false;
   page.openEditById.call(page, occurrenceId);
-  assert.strictEqual(page.data.form.id, 'series', 'occurrence 深链必须打开其重复源的编辑表单');
-  assert.strictEqual(page.data.form.sourceKind, 'series', 'occurrence 深链解析出的表单必须是系列形态');
+  assert.strictEqual(page.data.form.id, occurrenceId, '单日深链打开该次日程');
+  assert.strictEqual(page.data.form.sourceKind, 'occurrence', '单日表单保留重复日程覆盖形态');
   assert.strictEqual(page.data.sheetShow, true, '系列仍存在时必须打开编辑弹层');
 
   const orphanId = 'o_gone_' + today.replace(/-/g, '');

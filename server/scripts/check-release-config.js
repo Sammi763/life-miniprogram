@@ -26,7 +26,7 @@ requireCondition(config.db && config.db.runMigrations === false, 'DB_RUN_MIGRATI
 requireCondition(Boolean(config.wxAppId && config.wxSecret && config.wxReminderTemplateId), 'WeChat production credentials/template are incomplete');
 requireCondition(Number(config.apiRateLimit) > 0 && Number(config.recordWriteRateLimit) > 0, 'API rate limits must be configured');
 requireCondition(Number(config.reminderRetentionDays) >= 7, 'REMINDER_RETENTION_DAYS must be at least 7');
-requireCondition(!config.ai || config.ai.enabled === false || Boolean(config.hasDedicatedAiEncryptionKey), 'AI_SECRET_ENCRYPTION_KEY must be an independent production key');
+requireCondition(config.ai && config.ai.enabled === false, 'Personalized AI must be disabled for the first release');
 requireCondition(/^https:\/\/[A-Za-z0-9.-]+(?:\/|$)/.test(apiBase) && !/example\.com|localhost|\d+\.\d+\.\d+\.\d+/.test(apiBase), 'PRODUCTION_API_BASE_URL must be a real HTTPS domain');
 
 const legalSource = fs.readFileSync(path.join(root, 'miniprogram/pages/legal/legal.js'), 'utf8');
